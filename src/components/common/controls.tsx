@@ -29,14 +29,19 @@ export function Field({
   label,
   children,
   error,
+  required = false,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string | null;
+  required?: boolean;
 }) {
   return (
     <div className="field" style={{ margin: 0 }}>
-      <label>{label}</label>
+      <label>
+        {label}
+        {required ? <span className="field-required" aria-hidden="true"> *</span> : null}
+      </label>
       {children}
       {error ? <div className="field-error">{error}</div> : null}
     </div>
@@ -50,6 +55,7 @@ export function Modal({
   onSave,
   saveLabel,
   saveDisabled = false,
+  saveClassName = 'btn btn-primary',
   children,
 }: {
   title: string;
@@ -58,6 +64,7 @@ export function Modal({
   onSave: () => void;
   saveLabel: string;
   saveDisabled?: boolean;
+  saveClassName?: string;
   children: React.ReactNode;
 }) {
   useEscape(onClose);
@@ -85,7 +92,7 @@ export function Modal({
           <button className="btn btn-secondary" onClick={onClose} style={{ height: 36, padding: '0 16px', fontSize: 13 }}>
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={onSave} disabled={saveDisabled} style={{ height: 36, padding: '0 18px', fontSize: 13 }}>
+          <button className={saveClassName} onClick={onSave} disabled={saveDisabled} style={{ height: 36, padding: '0 18px', fontSize: 13 }}>
             {saveLabel}
           </button>
         </div>

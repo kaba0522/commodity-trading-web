@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
-import { FREIGHT_STATES } from '../../data/constants';
-import { useAdmin } from '../../store/AdminContext';
+import { EmptyState, Field, Modal, Pagination } from '../../components/common/controls';
+import { FREIGHT_PAGE_SIZE, useAdmin } from '../../store/AdminContext';
 import { freightPrice } from '../../utils/format';
 
 const GRID: React.CSSProperties = {
@@ -13,7 +12,7 @@ export function FreightPage() {
   const admin = useAdmin();
   const {
     freightRoutes, freightLoading, freightError, freightPage, setFreightPage,
-    freightTotalPages, refreshFreight, freightOriginFilter, setFreightOriginFilter,
+    freightTotal, freightTotalPages, refreshFreight, freightSearch, setFreightSearch,
     freightUploadPreview, freightUploadLoading, freightUploadError,
     commitFreightUpload, clearFreightUpload,
     freightStatusFilter, setFreightStatusFilter, publishPending,
@@ -34,6 +33,10 @@ export function FreightPage() {
   useEffect(() => {
     if (liveMode) void refreshFreight();
   }, [liveMode, refreshFreight]);
+
+  useEffect(() => {
+    setFreightPage(1);
+  }, [freightSearch, freightStatusFilter, searchQuery, setFreightPage]);
 
   const openAdd = () => {
     setNewFreightError(null);
@@ -58,13 +61,25 @@ export function FreightPage() {
 
   const view = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    const destinationQuery = freightSearch.trim().toLowerCase();
     return freightRoutes.filter(
       (r) =>
-        (freightOriginFilter === 'All' || r.origin === freightOriginFilter) &&
         (freightStatusFilter === 'All statuses' || r.status === freightStatusFilter) &&
+        (liveMode || !destinationQuery || r.dest.toLowerCase().includes(destinationQuery)) &&
         (!q || r.dest.toLowerCase().includes(q) || r.origin.toLowerCase().includes(q)),
     );
-  }, [freightRoutes, freightOriginFilter, freightStatusFilter, searchQuery]);
+  }, [freightRoutes, freightSearch, freightStatusFilter, searchQuery, liveMode]);
+
+  const totalPages = liveMode
+    ? freightTotalPages
+    : Math.max(1, Math.ceil(view.length / FREIGHT_PAGE_SIZE));
+  const visibleRoutes = liveMode
+    ? view
+    : view.slice((freightPage - 1) * FREIGHT_PAGE_SIZE, freightPage * FREIGHT_PAGE_SIZE);
+
+  useEffect(() => {
+    if (freightPage > totalPages) setFreightPage(totalPages);
+  }, [freightPage, setFreightPage, totalPages]);
 
   const editRow = freightRoutes.find((r) => r.id === freightEditId) ?? null;
 
@@ -86,15 +101,18 @@ export function FreightPage() {
       ) : null}
 
       <div className="panel filter-bar">
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-          {['All', ...FREIGHT_STATES].map((key) => (
-            <FilterTag key={key} label={key} active={freightOriginFilter === key} onClick={() => {
-              setFreightOriginFilter(key);
-              setFreightPage(1);
-            }} />
-          ))}
-        </div>
-        <div style={{ width: 1, height: 22, background: 'var(--color-neutral-300)' }} />
+        <input
+          className="input"
+          type="search"
+          placeholder="Search destination"
+          aria-label="Search freight destinations"
+          value={freightSearch}
+          onChange={(event) => {
+            setFreightSearch(event.target.value);
+            setFreightPage(1);
+          }}
+          style={{ height: 34, width: 220, fontSize: 12.5 }}
+        />
         <select
           className="input"
           value={freightStatusFilter}
@@ -125,7 +143,7 @@ export function FreightPage() {
           <div className="grid-head" style={{ ...GRID, minWidth: 840 }}>
             <div>ORIGIN</div><div>DESTINATION</div><div>PRICE / QUINTAL</div><div>CAPACITY</div><div>STATUS</div><div />
           </div>
-          {view.map((r) => (
+          {visibleRoutes.map((r) => (
             <div key={r.id} className="grid-row" style={{ ...GRID, minWidth: 840 }}>
               <div style={{ fontWeight: 600 }}>{r.origin}</div>
               <div>{r.dest}</div>
@@ -148,17 +166,16 @@ export function FreightPage() {
           {freightError ? <div className="field-error" style={{ padding: '12px 16px' }}>{freightError}</div> : null}
           {view.length === 0 && !freightLoading && !freightError ? <EmptyState message="No freight routes match these filters." /> : null}
         </div>
-        {freightTotalPages > 1 ? (
-          <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)' }}>
-            <Pagination
-              page={freightPage}
-              totalPages={freightTotalPages}
-              pageSize={100}
-              onPageChange={setFreightPage}
-              disabled={freightLoading}
-            />
-          </div>
-        ) : null}
+        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--color-neutral-200)' }}>
+          <Pagination
+            page={freightPage}
+            totalPages={totalPages}
+            total={liveMode ? freightTotal : view.length}
+            pageSize={FREIGHT_PAGE_SIZE}
+            onPageChange={setFreightPage}
+            disabled={freightLoading}
+          />
+        </div>
       </div>
 
       {addOpen ? (
@@ -171,14 +188,10 @@ export function FreightPage() {
           saveDisabled={addSaving}
         >
           <div className="form-3col">
-            <Field label="Origin (state)">
-              <select className="input" value={newFreightOrigin} onChange={(e) => setNewFreightOrigin(e.target.value)}>
-                {FREIGHT_STATES.map((st) => (
-                  <option key={st} value={st}>{st}</option>
-                ))}
-              </select>
+            <Field label="Origin (state)" required>
+              <input className="input" placeholder="e.g. Punjab" autoComplete="off" value={newFreightOrigin} onChange={(e) => setNewFreightOrigin(e.target.value)} required />
             </Field>
-            <Field label="Destination">
+            <Field label="Destination" required>
               <input className="input" placeholder="e.g. Kandla Port" value={newFreightDest} onChange={(e) => setNewFreightDest(e.target.value)} />
             </Field>
             <Field label="Capacity">
@@ -186,7 +199,7 @@ export function FreightPage() {
             </Field>
           </div>
           <div className="form-2col">
-            <Field label="Price low (₹/quintal)">
+            <Field label="Price low (₹/quintal)" required>
               <input className="input" type="number" min="0" value={newFreightLow} onChange={(e) => setNewFreightLow(e.target.value)} />
             </Field>
             <Field label="Price high (leave blank for a single value)">

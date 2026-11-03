@@ -103,6 +103,7 @@ export function LoginPage() {
             <>
               <Field
                 label="Mobile number"
+                required
                 error={error ?? (showPhoneError ? 'Enter a valid 10-digit mobile number.' : null)}
               >
                 <div style={{ display: 'flex', gap: 7 }}>
@@ -118,6 +119,7 @@ export function LoginPage() {
                     autoComplete="tel-national"
                     maxLength={11}
                     autoFocus
+                    required
                     style={{ minHeight: 44 }}
                     aria-invalid={showPhoneError || undefined}
                   />
@@ -144,7 +146,7 @@ export function LoginPage() {
                   Change number
                 </button>
               </div>
-              <Field label="4-digit code" error={error}>
+              <Field label="4-digit code" required error={error}>
                 <input
                   className="input"
                   placeholder="••••"
@@ -152,6 +154,7 @@ export function LoginPage() {
                   onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }}
                   inputMode="numeric"
+                  required
                   autoFocus
                   style={{ minHeight: 44, letterSpacing: 4, fontSize: 18, textAlign: 'center' }}
                 />

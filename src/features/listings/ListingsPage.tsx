@@ -106,7 +106,9 @@ export function ListingsPage() {
               </div>
               <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
                 <button className="btn btn-secondary" onClick={() => openEdit(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Edit</button>
-                <button className="btn btn-secondary" onClick={() => forceExpire(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Expire</button>
+                {r.side === 'SELL' && r.status === 'Active' ? (
+                  <button className="btn btn-secondary" onClick={() => forceExpire(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Expire</button>
+                ) : null}
               </div>
             </div>
           ))}

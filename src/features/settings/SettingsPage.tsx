@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Field, Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
+import { useNavigate } from 'react-router-dom';
 
 export function SettingsPage() {
   const admin = useAdmin();
+  const navigate = useNavigate();
   const {
-    brokers, removeBroker, addBroker,
+    brokers,
     categories, newCategory, setNewCategory, addCategory,
     expiryTime, setExpiryTime, freightExpiryTime, setFreightExpiryTime, timezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
@@ -14,18 +16,19 @@ export function SettingsPage() {
     liveCategories, categoryError, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
     addCommodity, renameCommodity, deleteCommodity,
+    liveQualities, qualitiesLoading, qualitiesError, refreshQualities,
+    addQualities, renameQuality, deleteQuality,
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   } = admin;
 
   const [itemsCatId, setItemsCatId] = useState('');
   const [newItem, setNewItem] = useState('');
   const [itemError, setItemError] = useState<string | null>(null);
+  const [newQualities, setNewQualities] = useState('');
+  const [qualityFormError, setQualityFormError] = useState<string | null>(null);
   const [tosForm, setTosForm] = useState({ effectiveDate: '', termsUrl: '', privacyUrl: '' });
   const [tosError, setTosError] = useState<string | null>(null);
 
-  const {
-    page: brokerPage, setPage: setBrokerPage, totalPages: brokerTotalPages, pageItems: brokerPageItems,
-  } = usePagination(brokers, 10, 'brokers');
   const {
     page: catPage, setPage: setCatPage, totalPages: catTotalPages, pageItems: catPageItems,
   } = usePagination(categories, 10, 'categories');
@@ -53,9 +56,9 @@ export function SettingsPage() {
     if (liveMode && itemsCatId) void refreshCommodities(itemsCatId);
   }, [liveMode, itemsCatId, refreshCommodities]);
 
-  const confirmRemove = (name: string) => {
-    if (window.confirm(`Remove broker ${name}?`)) removeBroker(name);
-  };
+  useEffect(() => {
+    if (liveMode && itemsCatId) void refreshQualities(itemsCatId);
+  }, [liveMode, itemsCatId, refreshQualities]);
 
   const submitItem = async () => {
     if (!itemsCatId || !newItem.trim()) {
@@ -68,6 +71,28 @@ export function SettingsPage() {
       setNewItem('');
     } catch (e) {
       setItemError(e instanceof Error ? e.message : 'Add failed.');
+    }
+  };
+
+  const submitQualities = async () => {
+    if (!itemsCatId) {
+      setQualityFormError('Pick a category first.');
+      return;
+    }
+    const name = newQualities.trim();
+    if (!name) {
+      setQualityFormError('Enter a quality name.');
+      return;
+    }
+    setQualityFormError(null);
+    try {
+      const result = await addQualities(itemsCatId, [name]);
+      setNewQualities('');
+      if (result.skipped.length) {
+        admin.flash(`Created ${result.created.length}; already existed and skipped: ${result.skipped.join(', ')}`);
+      }
+    } catch (error) {
+      setQualityFormError(error instanceof Error ? error.message : 'Could not add qualities.');
     }
   };
 
@@ -140,35 +165,7 @@ export function SettingsPage() {
           </div>
         ) : null}
 
-        <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Broker list</div>
-          <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
-            The finite dropdown shown on the trade-accept screen. Users can always type a free-text name or pick &ldquo;Self&rdquo;.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {brokerPageItems.map((b) => (
-              <div key={b.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
-                <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{b.name}</div>
-                <div className="text-muted" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{b.phone}</div>
-                <button className="btn btn-secondary" onClick={() => confirmRemove(b.name)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-          {brokerTotalPages > 1 ? (
-            <Pagination
-              page={brokerPage}
-              totalPages={brokerTotalPages}
-              total={brokers.length}
-              pageSize={10}
-              onPageChange={setBrokerPage}
-            />
-          ) : null}
-          <button className="btn btn-secondary" onClick={addBroker} style={{ alignSelf: 'flex-start', height: 34, padding: '0 14px', fontSize: 13 }}>
-            Add broker
-          </button>
-        </div>
+        
 
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Payment terms defaults</div>
@@ -203,13 +200,13 @@ export function SettingsPage() {
                 onPageChange={setTosPage}
               />
             ) : null}
-            <Field label="Effective date">
+            <Field label="Effective date" required>
               <input className="input" type="date" value={tosForm.effectiveDate} onChange={(e) => setTosForm({ ...tosForm, effectiveDate: e.target.value })} />
             </Field>
-            <Field label="Terms URL">
+            <Field label="Terms URL" required>
               <input className="input" placeholder="https://…" value={tosForm.termsUrl} onChange={(e) => setTosForm({ ...tosForm, termsUrl: e.target.value })} />
             </Field>
-            <Field label="Privacy URL">
+            <Field label="Privacy URL" required>
               <input className="input" placeholder="https://…" value={tosForm.privacyUrl} onChange={(e) => setTosForm({ ...tosForm, privacyUrl: e.target.value })} />
             </Field>
             {tosError ? <div className="field-error">{tosError}</div> : null}
@@ -239,6 +236,11 @@ export function SettingsPage() {
                 <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{c}</div>
                 {liveMode ? (
                   <>
+                    {liveCategories.find((category) => category.name === c)?.qualityCount === 0 ? (
+                      <span className="tag tag-accent-2" title="Add at least one quality before users can create listings in this category" style={{ fontSize: 10 }}>
+                        No qualities
+                      </span>
+                    ) : null}
                     <button className="btn btn-secondary" onClick={() => renameCategory(c)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
                       Rename
                     </button>
@@ -272,7 +274,7 @@ export function SettingsPage() {
               onKeyDown={(e) => { if (e.key === 'Enter') addCategory(); }}
               style={{ height: 34, maxWidth: 220, fontSize: 13 }}
             />
-            <button className="btn btn-secondary" onClick={addCategory} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
+            <button className="btn btn-primary" onClick={addCategory} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
               Add category
             </button>
           </div>
@@ -283,7 +285,7 @@ export function SettingsPage() {
             <div style={{ fontWeight: 700, fontSize: 15 }}>
               Items {commoditiesLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
             </div>
-            <Field label="Category">
+            <Field label="Category" required>
               <select className="input" value={itemsCatId} onChange={(e) => setItemsCatId(e.target.value)}>
                 {liveCategories.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -346,11 +348,86 @@ export function SettingsPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') void submitItem(); }}
                 style={{ height: 34, maxWidth: 220, fontSize: 13 }}
               />
-              <button className="btn btn-secondary" onClick={() => void submitItem()} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
+              <button className="btn btn-primary" onClick={() => void submitItem()} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
                 Add item
               </button>
             </div>
             {itemError ? <div className="field-error">{itemError}</div> : null}
+          </div>
+        ) : null}
+
+        {liveMode ? (
+          <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>
+              Qualities {qualitiesLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
+            </div>
+            <Field label="Category" required>
+              <select className="input" value={itemsCatId} onChange={(event) => setItemsCatId(event.target.value)} disabled={!liveCategories.length}>
+                {liveCategories.map((category) => (
+                  <option key={category.id} value={category.id}>{category.name}</option>
+                ))}
+              </select>
+            </Field>
+            {qualitiesError ? <div className="field-error" role="alert">{qualitiesError}</div> : null}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              {liveQualities.map((quality) => (
+                <div key={quality.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{quality.name}</div>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const next = window.prompt('Rename quality:', quality.name);
+                      if (next?.trim() && next.trim() !== quality.name) {
+                        void renameQuality(quality.id, next, itemsCatId).catch((error: unknown) => {
+                          setQualityFormError(error instanceof Error ? error.message : 'Rename failed.');
+                        });
+                      }
+                    }}
+                    style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      if (window.confirm(`Delete quality “${quality.name}”? This fails if any listing uses it.`)) {
+                        void deleteQuality(quality.id, itemsCatId).catch((error: unknown) => {
+                          setQualityFormError(error instanceof Error ? error.message : 'Delete failed.');
+                        });
+                      }
+                    }}
+                    style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+              {liveQualities.length === 0 && !qualitiesLoading ? (
+                <div className="callout-info">
+                  No qualities in this category. Users cannot create listings in it until an admin adds a quality.
+                </div>
+              ) : null}
+            </div>
+            <Field label="Add quality" required>
+              <input
+                className="input"
+                type="text"
+                placeholder="e.g. Sella"
+                value={newQualities}
+                onChange={(event) => {
+                  setNewQualities(event.target.value);
+                  setQualityFormError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void submitQualities();
+                }}
+                disabled={!itemsCatId}
+              />
+            </Field>
+            <button className="btn btn-primary" onClick={() => void submitQualities()} disabled={!itemsCatId || !newQualities.trim()}>
+              Add quality
+            </button>
+            {qualityFormError ? <div className="field-error" role="alert">{qualityFormError}</div> : null}
           </div>
         ) : null}
 

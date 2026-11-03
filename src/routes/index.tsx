@@ -43,6 +43,9 @@ const AuditPage = lazy(() =>
 const FreightPage = lazy(() =>
   import('../features/freight/FreightPage').then((m) => ({ default: m.FreightPage })),
 );
+const BrokersPage = lazy(() =>
+  import('../features/brokers/BrokersPage').then((m) => ({ default: m.BrokersPage })),
+);
 
 function page(element: React.ReactNode) {
   return <Suspense fallback={<PageLoader />}>{element}</Suspense>;
@@ -83,6 +86,7 @@ export const router = createBrowserRouter(
             { path: 'settings', element: page(<SettingsPage />) },
             { path: 'audit', element: page(<AuditPage />) },
             { path: 'freight', element: page(<FreightPage />) },
+            { path: 'brokers', element: page(<BrokersPage />) },
             { path: '*', element: <NotFoundPage /> },
           ],
         },

@@ -8,7 +8,8 @@ export type ScreenKey =
   | 'trades'
   | 'settings'
   | 'audit'
-  | 'freight';
+  | 'freight'
+  | 'brokers';
 
 export interface NavItem {
   key: ScreenKey;
@@ -85,9 +86,30 @@ export interface Trade {
   broker: string;
 }
 
-export interface Broker {
+/** A broker record from GET /api/v1/brokers. */
+export interface BrokerUser {
+  id: string;
   name: string;
   phone: string;
+}
+
+export type CommissionType = 'percent' | 'per_bag' | 'flat';
+
+export interface Broker {
+  id: string;
+  name: string;
+  phone: string;
+  commissionType: CommissionType | null;
+  commissionRate: number | null;
+  active: boolean;
+  createdById: string;
+  updatedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: BrokerUser;
+  updatedBy: BrokerUser | null;
+  /** Included only on GET /:id */
+  tradeCount?: number;
 }
 
 export interface FreightRoute {

@@ -45,6 +45,9 @@ const ICONS: Record<ScreenKey, React.ReactNode> = {
   freight: (
     <Icon d='<rect x="1" y="3" width="15" height="13" rx="1"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>' />
   ),
+  brokers: (
+    <Icon d='<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/><line x1="18" y1="2" x2="22" y2="6"/><line x1="22" y1="2" x2="18" y2="6"/>' />
+  ),
 };
 
 function CollapseIcon({ collapsed }: { collapsed: boolean }) {
@@ -91,7 +94,7 @@ export function Sidebar({
           <div className="side-eyebrow">KKPK PLATFORM</div>
           <div className="side-title">Admin console</div>
         </div>
-        {onToggle ? (
+        {/* {onToggle ? (
           <button
             className="side-toggle"
             onClick={onToggle}
@@ -101,7 +104,7 @@ export function Sidebar({
           >
             <CollapseIcon collapsed={collapsed} />
           </button>
-        ) : null}
+        ) : null} */}
       </div>
       <nav className="side-nav" aria-label="Admin sections">
         {NAV.map((n) => {

@@ -17,12 +17,13 @@ import type {
   Trade,
   UserRecord,
 } from '../types';
-import { FREIGHT_STATES } from '../data/constants';
 import { ApiError } from '../services/api';
 import { authService, normalizePhone } from '../services/authService';
 import {
+  brokersApi,
   categoriesApi,
   commoditiesApi,
+  qualitiesApi,
   invitesApi,
   listingsApi,
   freightApi,
@@ -30,8 +31,11 @@ import {
   toE164Indian,
   tosVersionsApi,
   userDirectoryApi,
+  type BackendBroker,
   type BackendCategory,
   type BackendCommodity,
+  type BackendQuality,
+  type QualityBulkCreateResult,
   type BackendDirectoryUser,
   type BackendListing,
   type BackendListingStatus,
@@ -123,6 +127,50 @@ interface AdminState {
   exportCsv: (kind: 'trades' | 'listings' | 'generic', filename: string, rows: string[][]) => void;
 
   brokers: Broker[];
+  brokersLoading: boolean;
+  brokersError: string | null;
+  brokerPage: number;
+  brokerTotalPages: number;
+  brokerTotal: number;
+  setBrokerPage: (page: number) => void;
+  brokerSearch: string;
+  setBrokerSearch: (v: string) => void;
+  brokerActiveFilter: 'all' | 'true' | 'false';
+  setBrokerActiveFilter: (v: 'all' | 'true' | 'false') => void;
+  refreshBrokers: (page?: number) => Promise<void>;
+  /* broker add modal */
+  brokerAddOpen: boolean;
+  openBrokerAdd: () => void;
+  closeBrokerAdd: () => void;
+  brokerAddName: string;
+  setBrokerAddName: (v: string) => void;
+  brokerAddPhone: string;
+  setBrokerAddPhone: (v: string) => void;
+  brokerAddCommissionType: string;
+  setBrokerAddCommissionType: (v: string) => void;
+  brokerAddCommissionRate: string;
+  setBrokerAddCommissionRate: (v: string) => void;
+  brokerAddError: string | null;
+  brokerAddSaving: boolean;
+  submitBrokerAdd: () => Promise<void>;
+  /* broker edit modal */
+  brokerEditId: string | null;
+  openBrokerEdit: (id: string) => void;
+  closeBrokerEdit: () => void;
+  brokerEditName: string;
+  setBrokerEditName: (v: string) => void;
+  brokerEditPhone: string;
+  setBrokerEditPhone: (v: string) => void;
+  brokerEditCommissionType: string;
+  setBrokerEditCommissionType: (v: string) => void;
+  brokerEditCommissionRate: string;
+  setBrokerEditCommissionRate: (v: string) => void;
+  brokerEditError: string | null;
+  brokerEditSaving: boolean;
+  submitBrokerEdit: () => Promise<void>;
+  /* deactivate / reactivate */
+  deactivateBroker: (id: string) => Promise<boolean>;
+  reactivateBroker: (id: string) => Promise<void>;
   removeBroker: (name: string) => void;
   addBroker: () => void;
   categories: string[];
@@ -152,9 +200,12 @@ interface AdminState {
   freightLoading: boolean;
   freightError: string | null;
   freightPage: number;
+  freightTotal: number;
   freightTotalPages: number;
   setFreightPage: (page: number) => void;
   refreshFreight: (page?: number) => Promise<void>;
+  freightSearch: string;
+  setFreightSearch: (value: string) => void;
   freightUploadFile: File | null;
   freightUploadPreview: FreightUploadPreview | null;
   freightUploadLoading: boolean;
@@ -162,8 +213,6 @@ interface AdminState {
   previewFreightUpload: (file: File) => Promise<void>;
   commitFreightUpload: () => Promise<void>;
   clearFreightUpload: () => void;
-  freightOriginFilter: string;
-  setFreightOriginFilter: (f: string) => void;
   freightStatusFilter: string;
   setFreightStatusFilter: (v: string) => void;
   publishPending: () => void;
@@ -210,6 +259,7 @@ interface AdminState {
   refreshLiveSettings: () => Promise<void>;
   liveCategories: BackendCategory[];
   categoryError: string | null;
+  refreshCategories: () => Promise<void>;
   renameCategory: (name: string) => void;
   deleteCategory: (name: string) => void;
   liveCommodities: BackendCommodity[];
@@ -219,6 +269,13 @@ interface AdminState {
   addCommodity: (categoryId: string, name: string) => Promise<void>;
   renameCommodity: (id: string, name: string, categoryId: string) => Promise<void>;
   deleteCommodity: (id: string, categoryId: string) => Promise<void>;
+  liveQualities: BackendQuality[];
+  qualitiesLoading: boolean;
+  qualitiesError: string | null;
+  refreshQualities: (categoryId: string) => Promise<void>;
+  addQualities: (categoryId: string, names: string[]) => Promise<QualityBulkCreateResult>;
+  renameQuality: (id: string, name: string, categoryId: string) => Promise<void>;
+  deleteQuality: (id: string, categoryId: string) => Promise<void>;
   tosVersions: TosVersion[];
   tosVersionsLoading: boolean;
   tosVersionsError: string | null;
@@ -249,6 +306,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export const LIVE_PAGE_SIZE = 20;
+export const FREIGHT_PAGE_SIZE = 20;
 
 const BACKEND_STATUS_LABEL: Record<BackendListingStatus, ListingRow['status']> = {
   active: 'Active',
@@ -268,6 +326,7 @@ const UI_STATUS_PARAM: Record<string, string> = {
 
 function mapBackendListing(b: BackendListing, index: number, categoryName: (id: string) => string): ListingRow {
   const valid = b.priceValidUntil ? new Date(b.priceValidUntil) : null;
+  const adminExpired = b.status === 'price_expired' && b.priceValidUntil == null;
   return {
     id: index + 1,
     backendId: b.id,
@@ -279,9 +338,11 @@ function mapBackendListing(b: BackendListing, index: number, categoryName: (id: 
     weight: b.weightKg != null ? `${b.weightKg}KG` : '—',
     price: b.price,
     status: BACKEND_STATUS_LABEL[b.status] ?? 'Active',
-    validUntil: valid && !Number.isNaN(valid.getTime())
-      ? `until ${valid.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}`
-      : BACKEND_STATUS_LABEL[b.status] ?? '',
+    validUntil: adminExpired
+      ? 'expired by admin'
+      : valid && !Number.isNaN(valid.getTime())
+        ? `until ${valid.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+        : BACKEND_STATUS_LABEL[b.status] ?? '',
   };
 }
 
@@ -295,6 +356,24 @@ function mapBackendFreight(b: BackendFreightRoute, index: number): FreightRoute 
     high: b.priceHigh,
     capacity: b.truckCapacity ?? '',
     status: b.status === 'price_expired' ? 'Price expired' : 'Published',
+  };
+}
+
+function mapBackendBroker(b: BackendBroker): Broker {
+  return {
+    id: b.id,
+    name: b.name,
+    phone: b.phone,
+    commissionType: b.commissionType,
+    commissionRate: b.commissionRate,
+    active: b.active,
+    createdById: b.createdById,
+    updatedById: b.updatedById,
+    createdAt: b.createdAt,
+    updatedAt: b.updatedAt,
+    createdBy: b.createdBy,
+    updatedBy: b.updatedBy,
+    tradeCount: b.tradeCount,
   };
 }
 
@@ -368,6 +447,29 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [trades] = useState<Trade[]>([]);
 
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [brokersLoading, setBrokersLoading] = useState(false);
+  const [brokersError, setBrokersError] = useState<string | null>(null);
+  const [brokerPage, setBrokerPage] = useState(1);
+  const [brokerTotalPages, setBrokerTotalPages] = useState(0);
+  const [brokerTotal, setBrokerTotal] = useState(0);
+  const [brokerSearch, setBrokerSearch] = useState('');
+  const [brokerActiveFilter, setBrokerActiveFilter] = useState<'all' | 'true' | 'false'>('all');
+  /* broker add form state */
+  const [brokerAddOpen, setBrokerAddOpen] = useState(false);
+  const [brokerAddName, setBrokerAddName] = useState('');
+  const [brokerAddPhone, setBrokerAddPhone] = useState('');
+  const [brokerAddCommissionType, setBrokerAddCommissionType] = useState('');
+  const [brokerAddCommissionRate, setBrokerAddCommissionRate] = useState('');
+  const [brokerAddError, setBrokerAddError] = useState<string | null>(null);
+  const [brokerAddSaving, setBrokerAddSaving] = useState(false);
+  /* broker edit form state */
+  const [brokerEditId, setBrokerEditId] = useState<string | null>(null);
+  const [brokerEditName, setBrokerEditName] = useState('');
+  const [brokerEditPhone, setBrokerEditPhone] = useState('');
+  const [brokerEditCommissionType, setBrokerEditCommissionType] = useState('');
+  const [brokerEditCommissionRate, setBrokerEditCommissionRate] = useState('');
+  const [brokerEditError, setBrokerEditError] = useState<string | null>(null);
+  const [brokerEditSaving, setBrokerEditSaving] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [expiryTime, setExpiryTime] = useState('02:00');
@@ -375,8 +477,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('10-15 days');
 
-  // Session-local audit trail (no audit-log endpoint on the backend yet).
-  // Starts empty; entries are appended as the admin acts this session.
+  // Session-local fallback for demo mode; live audit entries come from /audit-logs.
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditAdmin, setAuditAdmin] = useState('All admins');
   const [auditAction, setAuditAction] = useState('All actions');
@@ -386,19 +487,20 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [freightLoading, setFreightLoading] = useState(false);
   const [freightError, setFreightError] = useState<string | null>(null);
   const [freightPage, setFreightPage] = useState(1);
+  const [freightTotal, setFreightTotal] = useState(0);
   const [freightTotalPages, setFreightTotalPages] = useState(0);
   const [freightUploadFile, setFreightUploadFile] = useState<File | null>(null);
   const [freightUploadPreview, setFreightUploadPreview] = useState<FreightUploadPreview | null>(null);
   const [freightUploadLoading, setFreightUploadLoading] = useState(false);
   const [freightUploadError, setFreightUploadError] = useState<string | null>(null);
-  const [freightOriginFilter, setFreightOriginFilter] = useState('All');
+  const [freightSearch, setFreightSearch] = useState('');
   const [freightStatusFilter, setFreightStatusFilter] = useState('All statuses');
   const [freightEditId, setFreightEditId] = useState<number | null>(null);
   const [freightEditLow, setFreightEditLow] = useState('');
   const [freightEditHigh, setFreightEditHigh] = useState('');
   const [freightEditCapacity, setFreightEditCapacity] = useState('');
   const [freightEditError, setFreightEditError] = useState<string | null>(null);
-  const [newFreightOrigin, setNewFreightOrigin] = useState(FREIGHT_STATES[0]);
+  const [newFreightOrigin, setNewFreightOrigin] = useState('');
   const [newFreightDest, setNewFreightDest] = useState('');
   const [newFreightLow, setNewFreightLow] = useState('');
   const [newFreightHigh, setNewFreightHigh] = useState('');
@@ -421,6 +523,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [liveCommodities, setLiveCommodities] = useState<BackendCommodity[]>([]);
   const [commoditiesLoading, setCommoditiesLoading] = useState(false);
   const [commodityError, setCommodityError] = useState<string | null>(null);
+  const [liveQualities, setLiveQualities] = useState<BackendQuality[]>([]);
+  const [qualitiesLoading, setQualitiesLoading] = useState(false);
+  const [qualitiesError, setQualitiesError] = useState<string | null>(null);
   const [tosVersions, setTosVersions] = useState<TosVersion[]>([]);
   const [tosVersionsLoading, setTosVersionsLoading] = useState(false);
   const [tosVersionsError, setTosVersionsError] = useState<string | null>(null);
@@ -453,8 +558,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
      Admin-only enforcement happens server-side (requireRole(['admin']));
      the UI additionally gates on the session's roles (see RequireAdmin)
      and surfaces backend 403s honestly. Endpoints the backend does not
-     expose (dedicated user-directory/suspend, negotiations, trades, audit
-     log, brokers) intentionally keep local state, starting empty — the
+     expose (dedicated user-directory/suspend, negotiations, trades) intentionally
+     keep local state, starting empty — the
      console never shows invented rows. The user roster is assembled from
      real listing owners instead (see refreshUsers below). */
   const liveCategoriesRef = useRef<BackendCategory[]>([]);
@@ -464,12 +569,32 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const ensureCategories = useCallback(async (): Promise<BackendCategory[]> => {
     if (liveCategoriesRef.current.length) return liveCategoriesRef.current;
-    const { data } = await categoriesApi.list(undefined, 100);
-    liveCategoriesRef.current = data;
-    setLiveCategories(data);
-    setCategories(data.map((c) => c.name));
-    return data;
+    const all: BackendCategory[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const { data, meta } = await categoriesApi.list({ page, limit: 100 });
+      all.push(...data);
+      totalPages = meta?.totalPages ?? 1;
+      page += 1;
+    } while (page <= totalPages);
+    liveCategoriesRef.current = all;
+    setLiveCategories(all);
+    setCategories(all.map((c) => c.name));
+    return all;
   }, []);
+
+  const refreshCategories = useCallback(async () => {
+    if (!liveMode) return;
+    setCategoryError(null);
+    try {
+      liveCategoriesRef.current = [];
+      await ensureCategories();
+    } catch (e) {
+      setCategoryError(liveErr(e, 'Could not load categories.'));
+      throw e;
+    }
+  }, [liveMode, ensureCategories]);
 
   const refreshInvites = useCallback(async () => {
     if (!liveMode) return;
@@ -612,20 +737,24 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setFreightError(null);
     try {
       const { data, meta } = await freightApi.list({
-        origin: freightOriginFilter === 'All' ? undefined : freightOriginFilter,
+        destination: freightSearch.trim() || undefined,
         page: requestedPage,
-        limit: 100,
+        limit: FREIGHT_PAGE_SIZE,
       });
       setFreightRoutes(data.map(mapBackendFreight));
-      setFreightTotalPages(meta?.totalPages ?? 0);
+      const total = meta?.total ?? data.length;
+      setFreightTotal(total);
+      setFreightTotalPages(meta?.totalPages ?? Math.ceil(total / FREIGHT_PAGE_SIZE));
+      if (meta?.totalPages && requestedPage > meta.totalPages) setFreightPage(meta.totalPages);
     } catch (e) {
       setFreightRoutes([]);
+      setFreightTotal(0);
       setFreightTotalPages(0);
       setFreightError(liveErr(e, 'Could not load freight routes.'));
     } finally {
       setFreightLoading(false);
     }
-  }, [liveMode, freightOriginFilter, freightPage]);
+  }, [liveMode, freightSearch, freightPage]);
 
   const refreshLiveSettings = useCallback(async () => {
     if (!liveMode) return;
@@ -661,8 +790,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (!liveMode) return;
     setCommoditiesLoading(true);
     setCommodityError(null);
+    setLiveCommodities([]);
     try {
-      const { data } = await commoditiesApi.list(categoryId, undefined, 100);
+      const { data } = await commoditiesApi.list({ categoryId, limit: 100 });
       setLiveCommodities(data);
     } catch (e) {
       setCommodityError(liveErr(e, 'Could not load items.'));
@@ -670,6 +800,41 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setCommoditiesLoading(false);
     }
   }, [liveMode]);
+
+  const refreshQualities = useCallback(async (categoryId: string) => {
+    if (!liveMode) return;
+    setQualitiesLoading(true);
+    setQualitiesError(null);
+    setLiveQualities([]);
+    try {
+      const { data } = await qualitiesApi.list({ categoryId, limit: 100 });
+      setLiveQualities(data);
+    } catch (e) {
+      setLiveQualities([]);
+      setQualitiesError(liveErr(e, 'Could not load qualities.'));
+    } finally {
+      setQualitiesLoading(false);
+    }
+  }, [liveMode]);
+
+  const addQualities = useCallback(async (categoryId: string, names: string[]) => {
+    const result = await qualitiesApi.createMany(categoryId, names);
+    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+    flash(`Added ${result.created.length} quality entries; skipped ${result.skipped.length} existing`);
+    return result;
+  }, [refreshQualities, refreshCategories, flash]);
+
+  const renameQuality = useCallback(async (id: string, name: string, categoryId: string) => {
+    await qualitiesApi.rename(id, name.trim());
+    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+    flash('Quality renamed');
+  }, [refreshQualities, refreshCategories, flash]);
+
+  const deleteQuality = useCallback(async (id: string, categoryId: string) => {
+    await qualitiesApi.remove(id);
+    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+    flash('Quality deleted');
+  }, [refreshQualities, refreshCategories, flash]);
 
   const addCommodity = useCallback(async (categoryId: string, name: string) => {
     await commoditiesApi.create(categoryId, name.trim());
@@ -892,20 +1057,22 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const forceExpire = useCallback((id: number) => {
     if (liveMode) {
-      // No admin force-expire endpoint exists; withdraw is the closest real
-      // action (owner-only, records Withdrawn). A 403 is the backend answer.
       const target = rows.find((r) => r.id === id);
-      if (!target?.backendId) {
+      if (!target?.backendId || target.side !== 'SELL' || target.status !== 'Active') {
         flash('This row is stale — reload the list.');
         return;
       }
+      const backendId = target.backendId;
       void (async () => {
         try {
-          await listingsApi.withdraw(target.backendId as string);
-          flash('Withdrawn (recorded as Withdrawn)');
+          await listingsApi.forceExpire(backendId);
           await refreshListings();
+          setRows((prev) => prev.map((row) => (row.backendId === backendId
+            ? { ...row, status: 'Price expired' as const, validUntil: 'expired by admin' }
+            : row)));
+          flash('Price expired — expired by admin');
         } catch (e) {
-          flash(liveErr(e, 'Withdraw failed.'));
+          flash(liveErr(e, 'Could not expire listing.'));
         }
       })();
       return;
@@ -921,7 +1088,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       }
       return prev.map((r) => (r.id === id ? { ...r, status: 'Price expired' as const, validUntil: 'expired by admin' } : r));
     });
-    flash('Force-expired — the seller is notified');
+    flash('Price expired — expired by admin');
   }, [flash, logAudit, liveMode, rows, refreshListings]);
 
   const selectNego = useCallback((id: number) => setSelectedNegoId(id), []);
@@ -975,17 +1142,151 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash(kind === 'trades' ? 'Trades CSV downloaded' : 'CSV export downloaded');
   }, [flash]);
 
+  const refreshBrokers = useCallback(async (requestedPage = brokerPage) => {
+    if (!liveMode) return;
+    setBrokersLoading(true);
+    setBrokersError(null);
+    try {
+      const { data, meta } = await brokersApi.list({
+        search: brokerSearch.trim() || undefined,
+        active: brokerActiveFilter === 'all' ? undefined : brokerActiveFilter === 'true',
+        page: requestedPage,
+        limit: 20,
+      });
+      setBrokers(data.map(mapBackendBroker));
+      setBrokerTotalPages(meta?.totalPages ?? 0);
+      setBrokerTotal(meta?.total ?? 0);
+    } catch (e) {
+      setBrokers([]);
+      setBrokerTotalPages(0);
+      setBrokerTotal(0);
+      setBrokersError(liveErr(e, 'Could not load brokers.'));
+    } finally {
+      setBrokersLoading(false);
+    }
+  }, [liveMode, brokerSearch, brokerActiveFilter, brokerPage]);
+
+  const openBrokerAdd = useCallback(() => {
+    setBrokerAddError(null);
+    setBrokerAddOpen(true);
+  }, []);
+
+  const closeBrokerAdd = useCallback(() => {
+    if (brokerAddSaving) return;
+    setBrokerAddOpen(false);
+  }, [brokerAddSaving]);
+
+  const submitBrokerAdd = useCallback(async () => {
+    setBrokerAddError(null);
+    const hasType = brokerAddCommissionType.trim() !== '';
+    const hasRate = brokerAddCommissionRate.trim() !== '';
+    if (hasType !== hasRate) {
+      setBrokerAddError('commissionType and commissionRate must be provided together');
+      return;
+    }
+    setBrokerAddSaving(true);
+    try {
+      const created = await brokersApi.create({
+        name: brokerAddName.trim(),
+        phone: brokerAddPhone.trim(),
+        commissionType: hasType ? (brokerAddCommissionType as Broker['commissionType']) : null,
+        commissionRate: hasRate ? Number(brokerAddCommissionRate) : null,
+      });
+      setBrokerAddOpen(false);
+      setBrokerAddName('');
+      setBrokerAddPhone('');
+      flash(`Broker "${created.name}" added`);
+      if (brokerPage === 1) {
+        await refreshBrokers(1);
+      } else {
+        setBrokerPage(1);
+      }
+    } catch (e) {
+      setBrokerAddError(liveErr(e, 'Add failed.'));
+    } finally {
+      setBrokerAddSaving(false);
+    }
+  }, [brokerAddName, brokerAddPhone, brokerAddCommissionType, brokerAddCommissionRate, brokerPage, flash, refreshBrokers]);
+
+  const openBrokerEdit = useCallback((id: string) => {
+    const b = brokers.find((x) => x.id === id);
+    setBrokerEditId(id);
+    setBrokerEditName(b?.name ?? '');
+    setBrokerEditPhone(b?.phone ?? '');
+    setBrokerEditCommissionType(b?.commissionType ?? '');
+    setBrokerEditCommissionRate(b?.commissionRate != null ? String(b.commissionRate) : '');
+    setBrokerEditError(null);
+  }, [brokers]);
+
+  const closeBrokerEdit = useCallback(() => {
+    if (brokerEditSaving) return;
+    setBrokerEditId(null);
+    setBrokerEditError(null);
+  }, [brokerEditSaving]);
+
+  const submitBrokerEdit = useCallback(async () => {
+    if (!brokerEditId) return;
+    setBrokerEditError(null);
+    const hasType = brokerEditCommissionType.trim() !== '';
+    const hasRate = brokerEditCommissionRate.trim() !== '';
+    if (hasType !== hasRate) {
+      setBrokerEditError('commissionType and commissionRate must be provided together');
+      return;
+    }
+    setBrokerEditSaving(true);
+    try {
+      const patch: Parameters<typeof brokersApi.update>[1] = {};
+      if (brokerEditName.trim()) patch.name = brokerEditName.trim();
+      if (brokerEditPhone.trim()) patch.phone = brokerEditPhone.trim();
+      if (hasType) {
+        patch.commissionType = brokerEditCommissionType as Broker['commissionType'];
+        patch.commissionRate = Number(brokerEditCommissionRate);
+      } else if (!hasType && !hasRate) {
+        // Both blank = clear the commission
+        patch.commissionType = null;
+        patch.commissionRate = null;
+      }
+      await brokersApi.update(brokerEditId, patch);
+      setBrokerEditId(null);
+      flash('Broker updated');
+      await refreshBrokers();
+    } catch (e) {
+      setBrokerEditError(liveErr(e, 'Update failed.'));
+    } finally {
+      setBrokerEditSaving(false);
+    }
+  }, [brokerEditId, brokerEditName, brokerEditPhone, brokerEditCommissionType, brokerEditCommissionRate, flash, refreshBrokers]);
+
+  const deactivateBroker = useCallback(async (id: string) => {
+    try {
+      await brokersApi.deactivate(id);
+      flash('Broker deactivated');
+      await refreshBrokers();
+      return true;
+    } catch (e) {
+      flash(liveErr(e, 'Deactivate failed.'));
+      return false;
+    }
+  }, [flash, refreshBrokers]);
+
+  const reactivateBroker = useCallback(async (id: string) => {
+    try {
+      await brokersApi.reactivate(id);
+      flash('Broker reactivated');
+      await refreshBrokers();
+    } catch (e) {
+      flash(liveErr(e, 'Reactivate failed.'));
+    }
+  }, [flash, refreshBrokers]);
+
+  // Legacy stub callbacks (kept for backward compatibility with any existing references)
   const removeBroker = useCallback((name: string) => {
     setBrokers((prev) => prev.filter((b) => b.name !== name));
     flash(`Broker ${name} removed`);
   }, [flash]);
 
   const addBroker = useCallback(() => {
-    const name = window.prompt('Broker name:');
-    if (!name || !name.trim()) return;
-    const phone = window.prompt('Broker phone (optional):') ?? '';
-    setBrokers((prev) => [...prev, { name: name.trim(), phone: phone.trim() || '—' }]);
-    flash(`Broker ${name.trim()} added`);
+    flash('Use the Brokers page to add a broker.');
   }, [flash]);
 
   const addCategory = useCallback(() => {
@@ -1003,10 +1304,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setCategoryError(null);
       void (async () => {
         try {
-          const created = await categoriesApi.create(v);
-          liveCategoriesRef.current = [...liveCategoriesRef.current, created];
-          setLiveCategories(liveCategoriesRef.current);
-          setCategories(liveCategoriesRef.current.map((c) => c.name));
+          await categoriesApi.create(v);
+          await refreshCategories();
           setNewCategory('');
           flash(`Category “${v}” added`);
         } catch (e) {
@@ -1022,7 +1321,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setCategories((prev) => [...prev, v]);
     setNewCategory('');
     flash(`Category “${v}” added`);
-  }, [newCategory, categories, flash, liveMode]);
+  }, [newCategory, categories, flash, liveMode, refreshCategories]);
 
   const renameCategory = useCallback((name: string) => {
     // PATCH /commodity-categories/:id { name } — admin only.
@@ -1036,16 +1335,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setCategoryError(null);
     void (async () => {
       try {
-        const updated = await categoriesApi.rename(found.id, next.trim());
-        liveCategoriesRef.current = liveCategoriesRef.current.map((c) => (c.id === found.id ? updated : c));
-        setLiveCategories(liveCategoriesRef.current);
-        setCategories(liveCategoriesRef.current.map((c) => c.name));
+        await categoriesApi.rename(found.id, next.trim());
+        await refreshCategories();
         flash('Category renamed');
       } catch (e) {
         setCategoryError(liveErr(e, 'Rename failed.'));
       }
     })();
-  }, [flash]);
+  }, [flash, refreshCategories]);
 
   const deleteCategory = useCallback((name: string) => {
     // DELETE /commodity-categories/:id — admin only; 409 when still referenced.
@@ -1057,15 +1354,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     void (async () => {
       try {
         await categoriesApi.remove(found.id);
-        liveCategoriesRef.current = liveCategoriesRef.current.filter((c) => c.id !== found.id);
-        setLiveCategories(liveCategoriesRef.current);
-        setCategories(liveCategoriesRef.current.map((c) => c.name));
+        await refreshCategories();
         flash('Category deleted');
       } catch (e) {
         flash(liveErr(e, 'Delete failed.'));
       }
     })();
-  }, [flash]);
+  }, [flash, refreshCategories]);
 
   const saveSettings = useCallback(() => {
     if (liveMode) {
@@ -1232,6 +1527,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, [freightUploadFile, freightUploadPreview, liveMode, clearFreightUpload, flash, refreshFreight]);
 
   const addFreightRoute = useCallback(async (): Promise<boolean> => {
+    if (!newFreightOrigin.trim()) {
+      setNewFreightError('Add an origin state first.');
+      return false;
+    }
     if (!newFreightDest.trim() || !newFreightLow.trim()) {
       setNewFreightError('Add a destination and price first.');
       return false;
@@ -1250,13 +1549,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (liveMode) {
       try {
         await freightApi.create({
-          originName: newFreightOrigin,
+          originName: newFreightOrigin.trim(),
           destinationName: newFreightDest.trim(),
           priceLow: low,
           priceHigh: high,
           unit: 'per_quintal',
           truckCapacity: newFreightCapacity.trim() || null,
         });
+        setNewFreightOrigin('');
         setNewFreightDest('');
         setNewFreightLow('');
         setNewFreightHigh('');
@@ -1273,7 +1573,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setFreightRoutes((prev) => [
       {
         id: Math.max(0, ...prev.map((r) => r.id)) + 1,
-        origin: newFreightOrigin,
+        origin: newFreightOrigin.trim(),
         dest: newFreightDest.trim(),
         low, high,
         capacity: newFreightCapacity.trim() || '30-35 MT',
@@ -1281,6 +1581,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       },
       ...prev,
     ]);
+    setFreightPage(1);
+    setNewFreightOrigin('');
     setNewFreightDest('');
     setNewFreightLow('');
     setNewFreightHigh('');
@@ -1295,8 +1597,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     usersLoading, usersError, refreshUsers,
     invites, revokeInvite,
     inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
-    inviteBuyer, toggleInviteBuyer: () => setInviteBuyer((v) => !v),
-    inviteSeller, toggleInviteSeller: () => setInviteSeller((v) => !v),
+    inviteBuyer, toggleInviteBuyer: () => {
+      setInviteBuyer(true);
+      setInviteSeller(false);
+    },
+    inviteSeller, toggleInviteSeller: () => {
+      setInviteBuyer(false);
+      setInviteSeller(true);
+    },
     invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite,
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
     editId, openEdit, closeEdit, editPrice, setEditPrice, editWeight, setEditWeight,
@@ -1305,13 +1613,28 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     nudgeMessage, setNudgeMessage, relayPrice, setRelayPrice, relaySide, setRelaySide,
     nudge, relay,
     trades, exportCsv,
-    brokers, removeBroker, addBroker,
+    brokers, brokersLoading, brokersError,
+    brokerPage, setBrokerPage, brokerTotalPages, brokerTotal,
+    brokerSearch, setBrokerSearch, brokerActiveFilter, setBrokerActiveFilter,
+    refreshBrokers,
+    brokerAddOpen, openBrokerAdd, closeBrokerAdd,
+    brokerAddName, setBrokerAddName, brokerAddPhone, setBrokerAddPhone,
+    brokerAddCommissionType, setBrokerAddCommissionType,
+    brokerAddCommissionRate, setBrokerAddCommissionRate,
+    brokerAddError, brokerAddSaving, submitBrokerAdd,
+    brokerEditId, openBrokerEdit, closeBrokerEdit,
+    brokerEditName, setBrokerEditName, brokerEditPhone, setBrokerEditPhone,
+    brokerEditCommissionType, setBrokerEditCommissionType,
+    brokerEditCommissionRate, setBrokerEditCommissionRate,
+    brokerEditError, brokerEditSaving, submitBrokerEdit,
+    deactivateBroker, reactivateBroker,
+    removeBroker, addBroker,
     categories, addCategory, newCategory, setNewCategory,
     expiryTime, setExpiryTime, freightExpiryTime, setFreightExpiryTime, timezone, setTimezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings, saveFreightExpiry,
     audit, auditAdmin, setAuditAdmin, auditAction, setAuditAction, auditQuery, setAuditQuery,
-    freightRoutes, freightOriginFilter, setFreightOriginFilter,
-    freightLoading, freightError, freightPage, setFreightPage, freightTotalPages, refreshFreight,
+    freightRoutes, freightSearch, setFreightSearch,
+    freightLoading, freightError, freightPage, setFreightPage, freightTotal, freightTotalPages, refreshFreight,
     freightUploadFile, freightUploadPreview, freightUploadLoading, freightUploadError,
     previewFreightUpload, commitFreightUpload, clearFreightUpload,
     freightStatusFilter, setFreightStatusFilter, publishPending,
@@ -1327,9 +1650,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,
     settingsLoading, settingsError, refreshLiveSettings,
-    liveCategories, categoryError, renameCategory, deleteCategory,
+    liveCategories, categoryError, refreshCategories, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
     addCommodity, renameCommodity, deleteCommodity,
+    liveQualities, qualitiesLoading, qualitiesError, refreshQualities, addQualities,
+    renameQuality, deleteQuality,
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   }), [
     searchQuery, countdown, toast, flash,
@@ -1340,13 +1665,23 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     editPrice, editWeight, editReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, selectedNegoId, selectNego,
     nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv,
-    brokers, removeBroker, addBroker, categories, addCategory, newCategory,
+    brokers, brokersLoading, brokersError,
+    brokerPage, brokerTotalPages, brokerTotal,
+    brokerSearch, brokerActiveFilter, refreshBrokers,
+    brokerAddOpen, openBrokerAdd, closeBrokerAdd,
+    brokerAddName, brokerAddPhone, brokerAddCommissionType, brokerAddCommissionRate,
+    brokerAddError, brokerAddSaving, submitBrokerAdd,
+    brokerEditId, openBrokerEdit, closeBrokerEdit,
+    brokerEditName, brokerEditPhone, brokerEditCommissionType, brokerEditCommissionRate,
+    brokerEditError, brokerEditSaving, submitBrokerEdit,
+    deactivateBroker, reactivateBroker,
+    removeBroker, addBroker, categories, addCategory, newCategory,
     expiryTime, freightExpiryTime, timezone, defaultPaymentTerms, saveSettings, saveFreightExpiry,
     audit, auditAdmin, auditAction, auditQuery,
-    freightRoutes, freightLoading, freightError, freightPage, freightTotalPages, refreshFreight,
+    freightRoutes, freightLoading, freightError, freightPage, freightTotal, freightTotalPages, refreshFreight,
     freightUploadFile, freightUploadPreview, freightUploadLoading, freightUploadError,
     previewFreightUpload, commitFreightUpload, clearFreightUpload,
-    freightOriginFilter, freightStatusFilter, publishPending,
+    freightSearch, freightStatusFilter, publishPending,
     freightEditId, openFreightEdit, closeFreightEdit,
     freightEditLow, freightEditHigh, freightEditCapacity, freightEditError, saveFreightEdit,
     removeFreightRoute, newFreightOrigin, newFreightDest, newFreightLow, newFreightHigh,
@@ -1356,9 +1691,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     listingsLoading, listingsError, listingPage, setListingPage,
     listingTotal, listingTotalPages, refreshListings,
     settingsLoading, settingsError, refreshLiveSettings,
-    liveCategories, categoryError, renameCategory, deleteCategory,
+    liveCategories, categoryError, refreshCategories, renameCategory, deleteCategory,
     liveCommodities, commoditiesLoading, commodityError, refreshCommodities,
     addCommodity, renameCommodity, deleteCommodity,
+    liveQualities, qualitiesLoading, qualitiesError, refreshQualities, addQualities,
+    renameQuality, deleteQuality,
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   ]);
 

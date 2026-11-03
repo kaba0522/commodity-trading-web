@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
 
 const PATH_TO_SCREEN: Record<string, string> = {
   dash: 'dash', users: 'users', listings: 'listings', negotiations: 'negotiations',
-  trades: 'trades', settings: 'settings', audit: 'audit', freight: 'freight',
+  trades: 'trades', settings: 'settings', audit: 'audit', freight: 'freight', brokers: 'brokers',
 };
 
 const SIDEBAR_KEY = 'kkpk-sidebar-collapsed';
@@ -31,7 +31,7 @@ function initialCollapsed(): boolean {
  */
 export function AdminLayout() {
   const {
-    toast, flash, previewFreightUpload, exportCsv, rows, trades, liveMode,
+    toast, flash, previewFreightUpload, exportCsv, rows, trades, liveMode, openBrokerAdd,
   } = useAdmin();
   const navigate = useNavigate();
   const location = useLocation();
@@ -80,6 +80,14 @@ export function AdminLayout() {
   }, [page]);
 
   const handlePrimary = () => {
+    if (seg === 'brokers') {
+      if (!liveMode) {
+        flash('Connect to the live service before adding brokers.');
+        return;
+      }
+      openBrokerAdd();
+      return;
+    }
     if (seg === 'freight') {
       if (!liveMode) {
         flash('Connect to the live service before uploading freight routes.');

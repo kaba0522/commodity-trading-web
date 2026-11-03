@@ -158,27 +158,33 @@ export function UsersPage() {
           <div className="field" style={{ margin: 0 }}>
             <label>Modes</label>
             <div style={{ display: 'flex', gap: 6 }}>
-              <div className={`tag ${inviteBuyer ? 'tag-accent-2' : 'tag-neutral'}`} onClick={toggleInviteBuyer} style={{ cursor: 'pointer' }} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter') toggleInviteBuyer(); }}
+              <button
+                type="button"
+                className={`tag ${inviteBuyer ? 'tag-accent-2' : 'tag-neutral'}`}
+                onClick={toggleInviteBuyer}
+                aria-pressed={inviteBuyer}
+                style={{ cursor: 'pointer', border: 0, font: 'inherit' }}
               >
                 Buyer
-              </div>
-              <div className={`tag ${inviteSeller ? 'tag-accent' : 'tag-neutral'}`} onClick={toggleInviteSeller} style={{ cursor: 'pointer' }} role="button" tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter') toggleInviteSeller(); }}
+              </button>
+              <button
+                type="button"
+                className={`tag ${inviteSeller ? 'tag-accent' : 'tag-neutral'}`}
+                onClick={toggleInviteSeller}
+                aria-pressed={inviteSeller}
+                style={{ cursor: 'pointer', border: 0, font: 'inherit' }}
               >
                 Seller
-              </div>
+              </button>
             </div>
           </div>
-          {inviteBuyer ? (
-            <Field label="Buyer payment terms">
-              <select className="input" value={invitePaymentTerms} onChange={(e) => setInvitePaymentTerms(e.target.value)}>
-                <option value="8-10 days">8-10 days</option>
-                <option value="10-15 days">10-15 days</option>
-                <option value="15-20 days">15-20 days</option>
-              </select>
-            </Field>
-          ) : null}
+          <Field label="Payment terms">
+            <select className="input" value={invitePaymentTerms} onChange={(e) => setInvitePaymentTerms(e.target.value)}>
+              <option value="8-10 days">8-10 days</option>
+              <option value="10-15 days">10-15 days</option>
+              <option value="15-20 days">15-20 days</option>
+            </select>
+          </Field>
           {inviteError ? <div className="field-error">{inviteError}</div> : null}
           <button className="btn btn-primary btn-block" onClick={sendInvite} style={{ height: 38, fontSize: 13 }}>Send invite</button>
         </div>

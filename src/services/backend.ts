@@ -9,7 +9,7 @@
  *  - surface 403s honestly instead of inventing endpoints.
  *
  * Routes with NO backend endpoint remain unavailable rather than being
- * simulated (negotiations, trades, audit log, brokers).
+ * simulated (negotiations and trades).
  * The admin user directory has no dedicated route (GET /users is 404; only
  * /users/me exists), so it is assembled from the owners returned by the
  * admin listing feed — see userDirectoryApi below.
@@ -111,6 +111,7 @@ export interface BackendListing {
   userId: string;
   categoryId: string;
   commodityId: string;
+  qualityId: string | null;
   itemName: string;
   quality: string | null;
   quantityBags: number | null;
@@ -134,6 +135,49 @@ export interface ListingFilters {
   limit?: number;
 }
 
+interface ListingCreateBase {
+  categoryId: string;
+  commodityId: string;
+  qualityId: string;
+  quantityBags: number;
+}
+
+export type ListingCreateBody =
+  | (ListingCreateBase & { side: 'BUY' })
+  | (ListingCreateBase & {
+  side: 'SELL';
+  weightKg?: number | null;
+  price?: number | null;
+  photoUrls?: string[];
+  videoUrls?: string[];
+  moisture?: string;
+  color?: string;
+  size?: string;
+  paymentTerms?: number;
+  notes?: string;
+});
+
+export interface BulkConfirmListingRow {
+  rowIndex: number;
+  categoryId: string;
+  commodityId: string;
+  qualityId: string;
+  quantityBags: number;
+  weightKg?: number | null;
+  price?: number | null;
+  paymentTerms?: number | null;
+  notes?: string | null;
+  moisture?: string | null;
+  color?: string | null;
+  size?: string | null;
+}
+
+export interface BulkConfirmListingsResult {
+  created: Array<{ rowIndex: number; listingId: string }>;
+  updated: Array<{ rowIndex: number; listingId: string }>;
+  failed: Array<{ rowIndex: number; reason: string }>;
+}
+
 export const listingsApi = {
   /**
    * GET /listings?side=&status=&... — admin sessions see every user's rows
@@ -145,6 +189,12 @@ export const listingsApi = {
       commodityId: f.commodityId, itemName: f.itemName,
       page: f.page, limit: f.limit,
     })}`),
+  /** POST /listings — always submit the selected quality UUID, never its label. */
+  create: (body: ListingCreateBody) =>
+    api.post<BackendListing>('/listings', body),
+  /** POST /listings/bulk-confirm — each accepted row requires qualityId. */
+  bulkConfirm: (rows: BulkConfirmListingRow[]) =>
+    api.post<BulkConfirmListingsResult>('/listings/bulk-confirm', { rows }),
   /** GET /listings/:id */
   getById: (id: string) => api.get<BackendListing>(`/listings/${id}`),
   /**
@@ -157,6 +207,9 @@ export const listingsApi = {
   /** PATCH /listings/:id/withdraw — owner-only, same caveat as update. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
+  /** PATCH /listings/:id/force-expire — admin only. */
+  forceExpire: (id: string) =>
+    api.patch<BackendListing>(`/listings/${id}/force-expire`, {}),
 };
 
 /* ---------- admin user directory (derived from listings/auth) ---------- */
@@ -357,12 +410,22 @@ export const settingsApi = {
 export interface BackendCategory {
   id: string;
   name: string;
+  qualityCount?: number;
+  createdAt?: string;
+}
+
+export interface CategoryFilters {
+  name?: string;
+  page?: number;
+  limit?: number;
 }
 
 export const categoriesApi = {
-  /** GET /commodity-categories?name= */
-  list: (name?: string, limit = 100) =>
-    api.getPage<BackendCategory[]>(`/commodity-categories${buildQuery({ name, limit })}`),
+  /** GET /commodity-categories?name=&page=&limit= */
+  list: (f: CategoryFilters = {}) =>
+    api.getPage<BackendCategory[]>(`/commodity-categories${buildQuery({
+      name: f.name, page: f.page, limit: f.limit ?? 100,
+    })}`),
   /** POST /commodity-categories { name } — admin only. */
   create: (name: string) =>
     api.post<BackendCategory>('/commodity-categories', { name }),
@@ -379,12 +442,23 @@ export interface BackendCommodity {
   id: string;
   categoryId: string;
   name: string;
+  createdAt?: string;
+  category?: { name: string };
+}
+
+export interface CommodityFilters {
+  categoryId?: string;
+  name?: string;
+  page?: number;
+  limit?: number;
 }
 
 export const commoditiesApi = {
-  /** GET /commodities?categoryId=&name= */
-  list: (categoryId?: string, name?: string, limit = 100) =>
-    api.getPage<BackendCommodity[]>(`/commodities${buildQuery({ categoryId, name, limit })}`),
+  /** GET /commodities?categoryId=&name=&page=&limit= */
+  list: (f: CommodityFilters = {}) =>
+    api.getPage<BackendCommodity[]>(`/commodities${buildQuery({
+      categoryId: f.categoryId, name: f.name, page: f.page, limit: f.limit ?? 100,
+    })}`),
   /** POST /commodities { categoryId, name } — admin only. */
   create: (categoryId: string, name: string) =>
     api.post<BackendCommodity>('/commodities', { categoryId, name }),
@@ -393,6 +467,47 @@ export const commoditiesApi = {
     api.patch<BackendCommodity>(`/commodities/${id}`, patch),
   /** DELETE /commodities/:id — admin only, 204. */
   remove: (id: string) => api.del(`/commodities/${id}`),
+};
+
+/* ---------- qualities (routes/qualities.js — authenticated; writes: admin) ---------- */
+
+export interface BackendQuality {
+  id: string;
+  categoryId: string;
+  name: string;
+  createdAt: string;
+  category?: { name: string };
+}
+
+export interface QualityBulkCreateResult {
+  created: BackendQuality[];
+  skipped: string[];
+}
+
+export interface QualityFilters {
+  categoryId?: string;
+  name?: string;
+  page?: number;
+  limit?: number;
+}
+
+export const qualitiesApi = {
+  /** GET /qualities?categoryId=&name=&page=&limit= */
+  list: (f: QualityFilters = {}) =>
+    api.getPage<BackendQuality[]>(`/qualities${buildQuery({
+      categoryId: f.categoryId, name: f.name, page: f.page, limit: f.limit ?? 20,
+    })}`),
+  /** POST /qualities { categoryId, name } — admin only. */
+  create: (categoryId: string, name: string) =>
+    api.post<BackendQuality>('/qualities', { categoryId, name }),
+  /** POST /qualities { categoryId, names } — admin only, idempotent bulk create. */
+  createMany: (categoryId: string, names: string[]) =>
+    api.post<QualityBulkCreateResult>('/qualities', { categoryId, names }),
+  /** PATCH /qualities/:id { name } — admin only. */
+  rename: (id: string, name: string) =>
+    api.patch<BackendQuality>(`/qualities/${id}`, { name }),
+  /** DELETE /qualities/:id — admin only, 204. */
+  remove: (id: string) => api.del(`/qualities/${id}`),
 };
 
 /* ---------- ToS (routes/tos.js — authenticated; gate for listings writes) ---------- */
@@ -416,7 +531,134 @@ export const tosApi = {
   accept: (version: number) => api.post<TosStatus>('/tos/accept', { version }),
 };
 
-/* ---------- ToS versions (routes/tosVersions.js — publish/list: admin) ---------- */
+/* ---------- brokers (routes/brokers.js — admin only) ---------- */
+
+export interface BackendBrokerUser {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+export type BackendCommissionType = 'percent' | 'per_bag' | 'flat';
+
+export interface BackendBroker {
+  id: string;
+  name: string;
+  phone: string;
+  commissionType: BackendCommissionType | null;
+  commissionRate: number | null;
+  active: boolean;
+  createdById: string;
+  updatedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: BackendBrokerUser;
+  updatedBy: BackendBrokerUser | null;
+  /** Only included on GET /:id */
+  tradeCount?: number;
+}
+
+export interface BrokerListFilters {
+  search?: string;
+  active?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface BrokerCreateBody {
+  name: string;
+  phone: string;
+  commissionType?: BackendCommissionType | null;
+  commissionRate?: number | null;
+}
+
+export interface BrokerPatchBody {
+  name?: string;
+  phone?: string;
+  commissionType?: BackendCommissionType | null;
+  commissionRate?: number | null;
+}
+
+export const brokersApi = {
+  /** GET /brokers?search=&active=&page=&limit= — admin only. */
+  list: (f: BrokerListFilters = {}) =>
+    api.getPage<BackendBroker[]>(`/brokers${buildQuery({
+      search: f.search,
+      active: f.active !== undefined ? String(f.active) : undefined,
+      page: f.page,
+      limit: f.limit,
+    })}`),
+  /** GET /brokers/:id — admin only; includes tradeCount. */
+  getById: (id: string) => api.get<BackendBroker>(`/brokers/${id}`),
+  /** POST /brokers — admin only. */
+  create: (body: BrokerCreateBody) => api.post<BackendBroker>('/brokers', body),
+  /** PATCH /brokers/:id — admin only. */
+  update: (id: string, body: BrokerPatchBody) => api.patch<BackendBroker>(`/brokers/${id}`, body),
+  /** DELETE /brokers/:id — soft delete (sets active = false). Returns updated broker (200). */
+  deactivate: (id: string) => api.delTyped<BackendBroker>(`/brokers/${id}`),
+  /** PATCH /brokers/:id/reactivate — sets active = true. */
+  reactivate: (id: string) => api.patch<BackendBroker>(`/brokers/${id}/reactivate`, {}),
+};
+
+/* ---------- audit logs (routes/audit-logs.js — admin, read-only) ---------- */
+
+export interface BackendAuditActor {
+  id: string;
+  name: string | null;
+  phone: string;
+  firmName: string | null;
+}
+
+export interface BackendAuditEntry {
+  id: string;
+  actorUserId: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  createdAt: string;
+  actor: BackendAuditActor;
+  changedFields: string[];
+  before?: unknown;
+  after?: unknown;
+}
+
+export interface BackendAuditFilters {
+  actorUserId?: string;
+  action?: string;
+  entity?: string;
+  entityId?: string;
+  q?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface BackendAuditFilterOptions {
+  actions: string[];
+  entities: string[];
+  actors: BackendAuditActor[];
+}
+
+export const auditLogsApi = {
+  /** GET /audit-logs — newest first; list rows omit before/after snapshots. */
+  list: (filters: BackendAuditFilters = {}) =>
+    api.getPage<BackendAuditEntry[]>(`/audit-logs${buildQuery({
+      actorUserId: filters.actorUserId,
+      action: filters.action,
+      entity: filters.entity,
+      entityId: filters.entityId,
+      q: filters.q,
+      from: filters.from,
+      to: filters.to,
+      page: filters.page,
+      limit: filters.limit,
+    })}`),
+  /** GET /audit-logs/filters — values present in the audit log. */
+  filters: () => api.get<BackendAuditFilterOptions>('/audit-logs/filters'),
+  /** GET /audit-logs/:id — includes full before/after snapshots. */
+  getById: (id: string) => api.get<BackendAuditEntry>(`/audit-logs/${encodeURIComponent(id)}`),
+};
 
 export interface TosVersion {
   id: string;

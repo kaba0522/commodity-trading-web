@@ -186,4 +186,7 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   del: (path: string) =>
     request<null>(path, { method: 'DELETE' }),
+  /** DELETE that expects a JSON body in the response (soft-delete pattern). */
+  delTyped: <T>(path: string) =>
+    request<T>(path, { method: 'DELETE' }),
 };
