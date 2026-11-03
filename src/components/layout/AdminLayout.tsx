@@ -120,7 +120,7 @@ export function AdminLayout() {
 
   return (
     <div className={`admin-grid${collapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar collapsed={collapsed} onToggle={toggleSidebar} />
+      <Sidebar collapsed={collapsed} />
       <div className="admin-main">
         <Header onToggleSidebar={toggleSidebar} sidebarCollapsed={collapsed} />
         <div className="content-pad">

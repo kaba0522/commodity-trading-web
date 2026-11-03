@@ -3,7 +3,7 @@ import { EmptyState, Field, Modal, Pagination } from '../../components/common/co
 import { ApiError } from '../../services/api';
 import { brokersApi, commoditiesApi, type BackendBroker, type BackendCommodity } from '../../services/backend';
 import { useAdmin } from '../../store/AdminContext';
-import type { Broker, CommissionType } from '../../types';
+import type { Broker } from '../../types';
 
 function commissionDisplay(b: Broker): string {
   if (!b.commissionType || b.commissionRate == null) return '—';

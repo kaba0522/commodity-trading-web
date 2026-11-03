@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Field, Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
-import { useNavigate } from 'react-router-dom';
 
 export function SettingsPage() {
   const admin = useAdmin();
-  const navigate = useNavigate();
   const {
-    brokers,
     categories, newCategory, setNewCategory, addCategory,
     expiryTime, setExpiryTime, freightExpiryTime, setFreightExpiryTime, timezone,
     defaultPaymentTerms, setDefaultPaymentTerms, saveSettings,
