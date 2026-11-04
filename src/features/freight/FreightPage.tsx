@@ -155,8 +155,8 @@ export function FreightPage() {
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                <button className="btn btn-secondary" onClick={() => openFreightEdit(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Edit</button>
-                <button className="btn btn-secondary" onClick={() => confirmRemove(r.id, `${r.origin} → ${r.dest}`)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
+                <button className="btn btn-primary" onClick={() => openFreightEdit(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Edit</button>
+                <button className="btn btn-danger" onClick={() => confirmRemove(r.id, `${r.origin} → ${r.dest}`)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
                   Remove
                 </button>
               </div>

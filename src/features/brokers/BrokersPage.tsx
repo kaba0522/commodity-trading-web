@@ -312,7 +312,7 @@ export function BrokersPage() {
                     {selectedBroker.active ? 'Active' : 'Inactive'}
                   </span>
                   <button
-                    className="btn btn-secondary"
+                    className="btn btn-primary"
                     onClick={() => openBrokerEdit(selectedBroker.id)}
                     style={{ height: 30, padding: '0 12px', fontSize: 11.5 }}
                   >
@@ -320,7 +320,7 @@ export function BrokersPage() {
                   </button>
                   {selectedBroker.active ? (
                     <button
-                      className="btn btn-secondary"
+                      className="btn btn-danger"
                       onClick={() => confirmDeactivate(selectedBroker)}
                       style={{ height: 30, padding: '0 12px', fontSize: 11.5 }}
                     >

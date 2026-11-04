@@ -106,7 +106,7 @@ export function CommoditySetupPage() {
                     Rename
                   </button>
                   <button
-                    className="btn btn-secondary"
+                    className="btn btn-danger"
                     onClick={() => {
                       if (window.confirm(`Delete category “${category}”? Fails if items still reference it.`)) {
                         deleteCategory(category);
@@ -175,7 +175,7 @@ export function CommoditySetupPage() {
                       Rename
                     </button>
                     <button
-                      className="btn btn-secondary"
+                      className="btn btn-danger"
                       onClick={() => {
                         if (window.confirm(`Delete commodity “${commodity.name}”?`)) {
                           void deleteCommodity(commodity.id, categoryId).catch((error: unknown) => {
@@ -244,7 +244,7 @@ export function CommoditySetupPage() {
                       Rename
                     </button>
                     <button
-                      className="btn btn-secondary"
+                      className="btn btn-danger"
                       onClick={() => {
                         if (window.confirm(`Delete quality “${quality.name}”? This fails if any listing uses it.`)) {
                           void deleteQuality(quality.id, categoryId).catch((error: unknown) => {

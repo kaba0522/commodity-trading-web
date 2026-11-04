@@ -57,7 +57,7 @@ interface AdminState {
   userFilter: string;
   setUserFilter: (f: string) => void;
   suspendUser: (id: number) => void;
-  editRoles: () => void;
+  updateUser: (id: number, updates: Pick<UserRecord, 'firm' | 'owner' | 'modes' | 'paymentTerms'>) => boolean;
 
   invites: Invite[];
   revokeInvite: (id: number) => void;
@@ -909,9 +909,29 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       : 'Access updated — logged to the audit trail');
   }, [flash, logAudit, liveMode]);
 
-  const editRoles = useCallback(() => {
-    flash('Role editor opens here — buyer, seller, or both');
-  }, [flash]);
+  const updateUser = useCallback((
+    id: number,
+    updates: Pick<UserRecord, 'firm' | 'owner' | 'modes' | 'paymentTerms'>,
+  ) => {
+    const target = users.find((user) => user.id === id);
+    if (!target) {
+      flash('This user is stale — reload the list before editing.');
+      return false;
+    }
+
+    setUsers((prev) => prev.map((user) => (user.id === id ? { ...user, ...updates } : user)));
+    logAudit({
+      admin: 'Kunj Bihari',
+      action: 'User profile',
+      entity: target.firm,
+      before: `${target.firm} · ${target.owner} · ${target.modes.join(', ')} · ${target.paymentTerms}`,
+      after: `${updates.firm} · ${updates.owner} · ${updates.modes.join(', ')} · ${updates.paymentTerms}`,
+    });
+    flash(liveMode
+      ? 'User updated locally only — profile changes are not saved to the backend'
+      : 'User profile updated — logged to the audit trail');
+    return true;
+  }, [users, logAudit, flash, liveMode]);
 
   const revokeInvite = useCallback((id: number) => {
     if (liveMode) {
@@ -1692,7 +1712,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AdminState>(() => ({
     searchQuery, setSearchQuery, toast, flash,
-    users, userFilter, setUserFilter, suspendUser, editRoles,
+    users, userFilter, setUserFilter, suspendUser, updateUser,
     usersLoading, usersError, refreshUsers,
     invites, revokeInvite,
     inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
@@ -1757,7 +1777,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   }), [
     searchQuery, toast, flash,
-    users, userFilter, suspendUser, editRoles, invites, revokeInvite,
+    users, userFilter, suspendUser, updateUser, invites, revokeInvite,
     usersLoading, usersError, refreshUsers,
     inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
