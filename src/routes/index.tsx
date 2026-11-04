@@ -37,6 +37,9 @@ const TradesPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('../features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const CommoditySetupPage = lazy(() =>
+  import('../features/commodities/CommoditySetupPage').then((m) => ({ default: m.CommoditySetupPage })),
+);
 const AuditPage = lazy(() =>
   import('../features/audit/AuditPage').then((m) => ({ default: m.AuditPage })),
 );
@@ -84,6 +87,7 @@ export const router = createBrowserRouter(
             { path: 'negotiations', element: page(<NegotiationsPage />) },
             { path: 'trades', element: page(<TradesPage />) },
             { path: 'settings', element: page(<SettingsPage />) },
+            { path: 'commodities', element: page(<CommoditySetupPage />) },
             { path: 'audit', element: page(<AuditPage />) },
             { path: 'freight', element: page(<FreightPage />) },
             { path: 'brokers', element: page(<BrokersPage />) },

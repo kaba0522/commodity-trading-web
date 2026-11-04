@@ -7,6 +7,7 @@ export type ScreenKey =
   | 'negotiations'
   | 'trades'
   | 'settings'
+  | 'commodities'
   | 'audit'
   | 'freight'
   | 'brokers';

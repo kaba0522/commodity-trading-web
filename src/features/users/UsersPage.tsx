@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
-import { EmptyState, Field, FilterTag, Pagination, usePagination } from '../../components/common/controls';
+import { useOutletContext } from 'react-router-dom';
+import { EmptyState, Field, FilterTag, Modal, Pagination, usePagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import type { UserRecord } from '../../types';
@@ -9,8 +10,8 @@ const PAGE_SIZE = 10;
 const FILTERS = [
   { key: 'all', label: 'All users' },
   { key: 'Active', label: 'Active' },
-  { key: 'Pending', label: 'Pending' },
   { key: 'Suspended', label: 'Suspended' },
+  { key: 'Pending', label: 'Pending' },
 ];
 
 const GRID: React.CSSProperties = {
@@ -20,35 +21,35 @@ const GRID: React.CSSProperties = {
 
 export function UsersPage() {
   const admin = useAdmin();
+  const { inviteModalOpen, closeInviteModal } = useOutletContext<{
+    inviteModalOpen: boolean;
+    closeInviteModal: () => void;
+  }>();
   const {
     users, userFilter, setUserFilter, suspendUser, editRoles,
     usersLoading, usersError, refreshUsers,
-    invites, revokeInvite, inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
+    invites, refreshInvites,
+    inviteePhone, setInviteePhone, inviteeFirm, setInviteeFirm,
     inviteBuyer, toggleInviteBuyer, inviteSeller, toggleInviteSeller,
-    invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite, searchQuery,
-    liveMode, invitesLoading, invitesError, refreshInvites,
+    inviteError, sendInvite, searchQuery, liveMode,
   } = admin;
 
-  // Live backend: the API has no dedicated user directory, so the roster is
-  // derived from listing owners (GET /listings, admin sees every row) and
-  // pending invites come from GET /invites.
+  // Live backend: users come from the directory and pending users from invites.
   useEffect(() => {
     if (!liveMode) return;
     void refreshUsers();
     void refreshInvites();
   }, [liveMode, refreshUsers, refreshInvites]);
 
-  // Pending invites are not accounts yet, but showing them as Pending rows
-  // makes the status filter meaningful instead of always empty.
   const roster = useMemo<UserRecord[]>(() => {
-    const pending = invites.map<UserRecord>((inv, i) => {
-      const role = /seller/i.test(inv.meta) ? 'Seller' : /buyer/i.test(inv.meta) ? 'Buyer' : null;
-      const invited = inv.meta.replace(/^[^·]*·\s*/, '');
+    const pending = invites.map<UserRecord>((invite, index) => {
+      const role = /seller/i.test(invite.meta) ? 'Seller' : /buyer/i.test(invite.meta) ? 'Buyer' : null;
+      const invited = invite.meta.replace(/^[^·]*·\s*/, '');
       return {
-        id: -(i + 1),
-        firm: inv.firm || '—',
+        id: -(index + 1),
+        firm: invite.firm || '—',
         owner: 'Invite pending',
-        phone: inv.firm,
+        phone: invite.firm || '—',
         modes: role ? [role] : [],
         status: 'Pending',
         invitedBy: '—',
@@ -71,6 +72,10 @@ export function UsersPage() {
   const {
     page: currentPage, setPage: setUserPage, totalPages, pageItems: pageRows,
   } = usePagination(filtered, PAGE_SIZE, `${userFilter}|${searchQuery}`);
+
+  const submitInvite = async () => {
+    if (await sendInvite()) closeInviteModal();
+  };
 
   return (
     <div className="users-split">
@@ -132,32 +137,44 @@ export function UsersPage() {
         ) : null}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 14.5 }}>Invite a user</div>
-          <Field label="Mobile number">
+      {inviteModalOpen ? (
+        <Modal
+          title="Invite a user"
+          subtitle="Send an invite using the user's mobile number."
+          onClose={closeInviteModal}
+          onSave={() => { void submitInvite(); }}
+          saveLabel="Send invite"
+        >
+          <Field label="Mobile number" required>
             <div style={{ display: 'flex', gap: 7 }}>
               <div className="input" style={{ width: 52, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>+91</div>
               <input
                 className="input"
                 placeholder="98xxx xxxxx"
                 value={inviteePhone}
-                onChange={(e) => setInviteePhone(e.target.value)}
-                inputMode="tel"
+                onChange={(event) => setInviteePhone(event.target.value.replace(/\D/g, '').slice(0, 10))}
+                type="tel"
+                inputMode="numeric"
+                pattern="[6-9][0-9]{9}"
+                minLength={10}
+                maxLength={10}
+                title="Enter a valid 10-digit mobile number."
+                autoFocus
+                required
               />
             </div>
           </Field>
-          <Field label="Firm name">
+          <Field label="Firm name" required>
             <input
               className="input"
               placeholder="Firm name"
               value={inviteeFirm}
-              onChange={(e) => setInviteeFirm(e.target.value)}
+              onChange={(event) => setInviteeFirm(event.target.value)}
+              required
             />
           </Field>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Modes</label>
-            <div style={{ display: 'flex', gap: 6 }}>
+          <Field label="Modes" required>
+            <div role="group" aria-label="Modes" aria-required="true" style={{ display: 'flex', gap: 6 }}>
               <button
                 type="button"
                 className={`tag ${inviteBuyer ? 'tag-accent-2' : 'tag-neutral'}`}
@@ -177,38 +194,10 @@ export function UsersPage() {
                 Seller
               </button>
             </div>
-          </div>
-          <Field label="Payment terms">
-            <select className="input" value={invitePaymentTerms} onChange={(e) => setInvitePaymentTerms(e.target.value)}>
-              <option value="8-10 days">8-10 days</option>
-              <option value="10-15 days">10-15 days</option>
-              <option value="15-20 days">15-20 days</option>
-            </select>
           </Field>
-          {inviteError ? <div className="field-error">{inviteError}</div> : null}
-          <button className="btn btn-primary btn-block" onClick={sendInvite} style={{ height: 38, fontSize: 13 }}>Send invite</button>
-        </div>
-
-        <div className="panel">
-            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--color-neutral-200)', fontWeight: 700, fontSize: 14.5, display: 'flex', alignItems: 'center', gap: 8 }}>
-            Pending invites
-          </div>
-          {invitesLoading ? <div className="text-muted" style={{ padding: '18px 16px', fontSize: 13 }}>Loading invites…</div> : null}
-          {invitesError ? <div className="field-error" style={{ padding: '12px 16px 0' }}>{invitesError}</div> : null}
-          {invites.map((i) => (
-            <div key={i.id} style={{ padding: '11px 16px', borderBottom: '1px solid var(--color-neutral-200)', display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600 }}>{i.firm}</div>
-                <div className="text-muted" style={{ fontSize: 11.5 }}>{i.meta}</div>
-              </div>
-              <button className="btn btn-secondary" onClick={() => revokeInvite(i.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5, flex: 'none' }}>
-                Revoke
-              </button>
-            </div>
-          ))}
-          {invites.length === 0 && !invitesLoading ? <EmptyState message="No pending invites." /> : null}
-        </div>
-      </div>
+          {inviteError ? <div className="field-error" role="alert">{inviteError}</div> : null}
+        </Modal>
+      ) : null}
     </div>
   );
 }

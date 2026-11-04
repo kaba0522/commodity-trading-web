@@ -18,7 +18,7 @@ import type {
   UserRecord,
 } from '../types';
 import { ApiError } from '../services/api';
-import { authService, normalizePhone } from '../services/authService';
+import { authService, isValidPhone, normalizePhone } from '../services/authService';
 import {
   brokersApi,
   categoriesApi,
@@ -44,24 +44,9 @@ import {
   type TosVersion,
 } from '../services/backend';
 
-function nextExpiryCountdown(expiryTime: string): string {
-  // Time left until the configured daily price expiry in Asia/Kolkata (UTC+5:30).
-  const now = new Date();
-  const istNow = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60000);
-  const expiry = new Date(istNow);
-  const [hours, minutes] = expiryTime.split(':').map(Number);
-  expiry.setHours(hours, minutes, 0, 0);
-  if (expiry.getTime() <= istNow.getTime()) expiry.setDate(expiry.getDate() + 1);
-  const diffMs = expiry.getTime() - istNow.getTime();
-  const h = Math.floor(diffMs / 3600000);
-  const m = Math.floor((diffMs % 3600000) / 60000);
-  return `${h}h ${m}m`;
-}
-
 interface AdminState {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  countdown: string;
   toast: string | null;
   flash: (msg: string) => void;
 
@@ -84,10 +69,8 @@ interface AdminState {
   toggleInviteBuyer: () => void;
   inviteSeller: boolean;
   toggleInviteSeller: () => void;
-  invitePaymentTerms: string;
-  setInvitePaymentTerms: (v: string) => void;
   inviteError: string | null;
-  sendInvite: () => void;
+  sendInvite: () => Promise<boolean>;
 
   rows: ListingRow[];
   sideFilter: string;
@@ -125,6 +108,7 @@ interface AdminState {
 
   trades: Trade[];
   exportCsv: (kind: 'trades' | 'listings' | 'generic', filename: string, rows: string[][]) => void;
+  exportListingsWorkbook: () => Promise<void>;
 
   brokers: Broker[];
   brokersLoading: boolean;
@@ -305,6 +289,34 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
+function downloadListingsWorkbook(headers: string[], sellerRows: Array<Array<string | number>>, buyerRows: Array<Array<string | number>>) {
+  const escapeXml = (value: string | number) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+  const worksheet = (name: string, rows: Array<Array<string | number>>) => {
+    const sheetRows = [headers, ...rows].map((row) => (
+      `<Row>${row.map((value) => {
+        const type = typeof value === 'number' && Number.isFinite(value) ? 'Number' : 'String';
+        return `<Cell><Data ss:Type="${type}">${escapeXml(value)}</Data></Cell>`;
+      }).join('')}</Row>`
+    )).join('');
+    return `<Worksheet ss:Name="${escapeXml(name)}"><Table>${sheetRows}</Table></Worksheet>`;
+  };
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">${worksheet('Seller Listings', sellerRows)}${worksheet('Buyer Listings', buyerRows)}</Workbook>`;
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'listings.xls';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const LIVE_PAGE_SIZE = 20;
 export const FREIGHT_PAGE_SIZE = 20;
 
@@ -409,7 +421,6 @@ function mapDirectoryUser(u: BackendDirectoryUser, index: number): UserRecord {
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [countdown, setCountdown] = useState(() => nextExpiryCountdown('02:00'));
   const [toast, setToast] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
@@ -422,7 +433,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [inviteeFirm, setInviteeFirm] = useState('');
   const [inviteBuyer, setInviteBuyer] = useState(true);
   const [inviteSeller, setInviteSeller] = useState(false);
-  const [invitePaymentTerms, setInvitePaymentTerms] = useState('10-15 days');
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   const [rows, setRows] = useState<ListingRow[]>([]);
@@ -529,12 +539,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [tosVersions, setTosVersions] = useState<TosVersion[]>([]);
   const [tosVersionsLoading, setTosVersionsLoading] = useState(false);
   const [tosVersionsError, setTosVersionsError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCountdown(nextExpiryCountdown(expiryTime));
-    const id = window.setInterval(() => setCountdown(nextExpiryCountdown(expiryTime)), 30000);
-    return () => window.clearInterval(id);
-  }, [expiryTime]);
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
@@ -922,20 +926,20 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     const digits = normalizePhone(inviteePhone);
     if (!/^[6-9]\d{9}$/.test(digits)) {
       setInviteError('Enter a valid 10-digit mobile number.');
-      return;
+      return false;
     }
-    if (!liveMode && !inviteeFirm.trim()) {
+    if (!inviteeFirm.trim()) {
       setInviteError('Enter the firm name.');
-      return;
+      return false;
     }
     if (!inviteBuyer && !inviteSeller) {
       setInviteError('Pick at least one mode (Buyer or Seller).');
-      return;
+      return false;
     }
     setInviteError(null);
     if (liveMode) {
-      // Backend invites store phone + a single roleHint only (no firm name,
-      // no payment terms) — invite.service.js.
+      // The form requires a firm name, although the invite endpoint stores
+      // only the phone and role hint.
       const roleHint = !inviteBuyer && inviteSeller ? 'seller' : 'buyer';
       try {
         await invitesApi.send(toE164Indian(digits), roleHint);
@@ -943,10 +947,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         setInviteePhone('');
         setInviteeFirm('');
         flash('Invite sent — they can sign in with OTP straight away');
+        return true;
       } catch (e) {
         setInviteError(liveErr(e, 'Send failed.'));
+        return false;
       }
-      return;
     }
     const modes: string[] = [];
     if (inviteBuyer) modes.push('Buyer');
@@ -962,6 +967,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setInviteePhone('');
     setInviteeFirm('');
     flash('Invite sent — they can sign in with OTP straight away');
+    return true;
   }, [inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, flash, logAudit, liveMode, refreshInvites]);
 
   const openEdit = useCallback((id: number) => {
@@ -1142,6 +1148,78 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash(kind === 'trades' ? 'Trades CSV downloaded' : 'CSV export downloaded');
   }, [flash]);
 
+  const exportListingsWorkbook = useCallback(async () => {
+    try {
+      const headers = [
+        'Firm', 'Phone', 'Commodity', 'Category', 'Quality', 'Quantity (bags)',
+        'Weight (kg)', 'Price', 'Currency', 'Status', 'Price valid until',
+        'Payment terms', 'Created at',
+      ];
+      let sellerRows: Array<Array<string | number>> = [];
+      let buyerRows: Array<Array<string | number>> = [];
+
+      if (liveMode) {
+        const categories = await ensureCategories();
+        const categoryName = (id: string) => categories.find((category) => category.id === id)?.name ?? '—';
+        const fetchAllListings = async (side: 'SELL' | 'BUY') => {
+          const firstPage = await listingsApi.list({
+            side,
+            status: 'active,price_expired,na,withdrawn,traded',
+            page: 1,
+            limit: 100,
+          });
+          const totalPages = firstPage.meta?.totalPages ?? 1;
+          const remainingPages = await Promise.all(
+            Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+              listingsApi.list({
+                side,
+                status: 'active,price_expired,na,withdrawn,traded',
+                page: index + 2,
+                limit: 100,
+              }).then((result) => result.data),
+            ),
+          );
+          return [...firstPage.data, ...remainingPages.flat()];
+        };
+        const [sellers, buyers] = await Promise.all([
+          fetchAllListings('SELL'),
+          fetchAllListings('BUY'),
+        ]);
+        const toSheetRows = (listings: BackendListing[]) => listings.map((listing) => [
+          listing.user?.firmName || listing.user?.name || '—',
+          listing.user?.phone ?? '',
+          listing.itemName,
+          categoryName(listing.categoryId),
+          listing.quality ?? '',
+          listing.quantityBags ?? '',
+          listing.weightKg ?? '',
+          listing.price ?? '',
+          listing.currency,
+          BACKEND_STATUS_LABEL[listing.status] ?? listing.status,
+          listing.priceValidUntil ?? '',
+          listing.paymentTerms ?? '',
+          listing.createdAt,
+        ]);
+        sellerRows = toSheetRows(sellers);
+        buyerRows = toSheetRows(buyers);
+      } else {
+        const toSheetRows = (side: ListingRow['side']) => rows
+          .filter((row) => row.side === side)
+          .map((row) => [
+            row.firm, row.subEntity, row.item, row.category, '',
+            '', row.weight, row.price ?? '', '', row.status, row.validUntil, '', '',
+          ]);
+        sellerRows = toSheetRows('SELL');
+        buyerRows = toSheetRows('BUY');
+      }
+
+      downloadListingsWorkbook(headers, sellerRows, buyerRows);
+      flash('Seller and buyer listings workbook downloaded');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Could not export listings.');
+    }
+  }, [liveMode, ensureCategories, rows, flash]);
+
   const refreshBrokers = useCallback(async (requestedPage = brokerPage) => {
     if (!liveMode) return;
     setBrokersLoading(true);
@@ -1178,6 +1256,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const submitBrokerAdd = useCallback(async () => {
     setBrokerAddError(null);
+    if (!isValidPhone(brokerAddPhone)) {
+      setBrokerAddError('Enter a valid 10-digit mobile number.');
+      return;
+    }
     const hasType = brokerAddCommissionType.trim() !== '';
     const hasRate = brokerAddCommissionRate.trim() !== '';
     if (hasType !== hasRate) {
@@ -1212,7 +1294,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     const b = brokers.find((x) => x.id === id);
     setBrokerEditId(id);
     setBrokerEditName(b?.name ?? '');
-    setBrokerEditPhone(b?.phone ?? '');
+    setBrokerEditPhone(b ? normalizePhone(b.phone) : '');
     setBrokerEditCommissionType(b?.commissionType ?? '');
     setBrokerEditCommissionRate(b?.commissionRate != null ? String(b.commissionRate) : '');
     setBrokerEditError(null);
@@ -1227,6 +1309,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const submitBrokerEdit = useCallback(async () => {
     if (!brokerEditId) return;
     setBrokerEditError(null);
+    if (brokerEditPhone.trim() && !isValidPhone(brokerEditPhone)) {
+      setBrokerEditError('Enter a valid 10-digit mobile number.');
+      return;
+    }
     const hasType = brokerEditCommissionType.trim() !== '';
     const hasRate = brokerEditCommissionRate.trim() !== '';
     if (hasType !== hasRate) {
@@ -1237,7 +1323,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     try {
       const patch: Parameters<typeof brokersApi.update>[1] = {};
       if (brokerEditName.trim()) patch.name = brokerEditName.trim();
-      if (brokerEditPhone.trim()) patch.phone = brokerEditPhone.trim();
+      if (brokerEditPhone.trim()) patch.phone = normalizePhone(brokerEditPhone);
       if (hasType) {
         patch.commissionType = brokerEditCommissionType as Broker['commissionType'];
         patch.commissionRate = Number(brokerEditCommissionRate);
@@ -1327,7 +1413,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     // PATCH /commodity-categories/:id { name } — admin only.
     const found = liveCategoriesRef.current.find((c) => c.name === name);
     if (!found) {
-      flash('Reload the taxonomy first.');
+      flash('Reload categories before trying again.');
       return;
     }
     const next = window.prompt('Rename category:', name);
@@ -1348,7 +1434,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     // DELETE /commodity-categories/:id — admin only; 409 when still referenced.
     const found = liveCategoriesRef.current.find((c) => c.name === name);
     if (!found) {
-      flash('Reload the taxonomy first.');
+      flash('Reload categories before trying again.');
       return;
     }
     void (async () => {
@@ -1381,7 +1467,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       })();
       return;
     }
-    flash('Settings saved — expiry, brokers and taxonomy updated');
+    flash('Settings saved — expiry settings updated');
   }, [flash, liveMode, expiryTime]);
 
   const saveFreightExpiry = useCallback(() => {
@@ -1592,7 +1678,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   }, [newFreightDest, newFreightLow, newFreightHigh, newFreightCapacity, newFreightOrigin, liveMode, flash, refreshFreight]);
 
   const value = useMemo<AdminState>(() => ({
-    searchQuery, setSearchQuery, countdown, toast, flash,
+    searchQuery, setSearchQuery, toast, flash,
     users, userFilter, setUserFilter, suspendUser, editRoles,
     usersLoading, usersError, refreshUsers,
     invites, revokeInvite,
@@ -1605,14 +1691,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setInviteBuyer(false);
       setInviteSeller(true);
     },
-    invitePaymentTerms, setInvitePaymentTerms, inviteError, sendInvite,
+    inviteError, sendInvite,
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
     editId, openEdit, closeEdit, editPrice, setEditPrice, editWeight, setEditWeight,
     editReason, setEditReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, setNegoFilter, selectedNegoId, selectNego,
     nudgeMessage, setNudgeMessage, relayPrice, setRelayPrice, relaySide, setRelaySide,
     nudge, relay,
-    trades, exportCsv,
+    trades, exportCsv, exportListingsWorkbook,
     brokers, brokersLoading, brokersError,
     brokerPage, setBrokerPage, brokerTotalPages, brokerTotal,
     brokerSearch, setBrokerSearch, brokerActiveFilter, setBrokerActiveFilter,
@@ -1657,14 +1743,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     renameQuality, deleteQuality,
     tosVersions, tosVersionsLoading, tosVersionsError, refreshTosVersions, publishTosVersion,
   }), [
-    searchQuery, countdown, toast, flash,
+    searchQuery, toast, flash,
     users, userFilter, suspendUser, editRoles, invites, revokeInvite,
     usersLoading, usersError, refreshUsers,
-    inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, invitePaymentTerms, inviteError, sendInvite,
+    inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
     editPrice, editWeight, editReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, selectedNegoId, selectNego,
-    nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv,
+    nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv, exportListingsWorkbook,
     brokers, brokersLoading, brokersError,
     brokerPage, brokerTotalPages, brokerTotal,
     brokerSearch, brokerActiveFilter, refreshBrokers,

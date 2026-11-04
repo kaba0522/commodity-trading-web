@@ -10,7 +10,7 @@ export function ConsoleShell() {
   const { isLive, tosStatus } = useAuth();
 
   // Live backend + ToS not accepted -> block the whole panel (the API would
-  // 403 every listings/taxonomy call with TOS_ACCEPTANCE_REQUIRED anyway).
+  // 403 every listings/category-management call with TOS_ACCEPTANCE_REQUIRED anyway).
   if (isLive && tosStatus?.needsAcceptance) {
     return (
       <div className="admin-shell">

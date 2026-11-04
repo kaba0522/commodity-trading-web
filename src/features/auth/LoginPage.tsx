@@ -111,13 +111,15 @@ export function LoginPage() {
                   <input
                     className="input"
                     placeholder="98108 71966"
-                    value={grouped}
+                    type="tel"
+                    value={phone}
                     onChange={(e) => setDigits(e.target.value)}
                     onBlur={() => setTouched(true)}
                     onKeyDown={(e) => { if (e.key === 'Enter') void sendCode(); }}
                     inputMode="numeric"
                     autoComplete="tel-national"
-                    maxLength={11}
+                    pattern="[0-9]*"
+                    maxLength={10}
                     autoFocus
                     required
                     style={{ minHeight: 44 }}
@@ -150,10 +152,13 @@ export function LoginPage() {
                 <input
                   className="input"
                   placeholder="••••"
+                  type="tel"
                   value={code}
                   onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH)); setError(null); }}
                   onKeyDown={(e) => { if (e.key === 'Enter') void submitCode(); }}
                   inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={OTP_LENGTH}
                   required
                   autoFocus
                   style={{ minHeight: 44, letterSpacing: 4, fontSize: 18, textAlign: 'center' }}

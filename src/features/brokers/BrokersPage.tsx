@@ -271,7 +271,10 @@ export function BrokersPage() {
                     inputMode="tel"
                     autoComplete="tel-national"
                     aria-label="Broker phone number"
+                    minLength={10}
                     maxLength={10}
+                    pattern="[6-9][0-9]{9}"
+                    title="Enter a valid 10-digit mobile number."
                     required
                     disabled={!liveMode || brokerAddSaving}
                   />
@@ -430,8 +433,12 @@ export function BrokersPage() {
               <input
                 className="input"
                 value={brokerEditPhone}
-                onChange={(event) => setBrokerEditPhone(event.target.value)}
+                onChange={(event) => setBrokerEditPhone(event.target.value.replace(/\D/g, '').slice(0, 10))}
                 inputMode="tel"
+                minLength={10}
+                maxLength={10}
+                pattern="[6-9][0-9]{9}"
+                title="Enter a valid 10-digit mobile number."
                 disabled={brokerEditSaving}
               />
             </Field>

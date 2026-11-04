@@ -17,7 +17,7 @@ export function Header({
   onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
 }) {
-  const { searchQuery, setSearchQuery, countdown, expiryTime } = useAdmin();
+  const { searchQuery, setSearchQuery, expiryTime } = useAdmin();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -35,8 +35,22 @@ export function Header({
     void logout();
     navigate('/login', { replace: true });
   };
+  const indiaDate = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Asia/Kolkata',
+  });
   const [expiryHour, expiryMinute] = expiryTime.split(':').map(Number);
-  const expiryLabel = `${expiryHour % 12 || 12}:${String(expiryMinute).padStart(2, '0')} ${expiryHour < 12 ? 'AM' : 'PM'} IST`;
+  const expiryLabel = Number.isInteger(expiryHour) && Number.isInteger(expiryMinute)
+    ? new Date(Date.UTC(2020, 0, 1, expiryHour, expiryMinute)).toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'UTC',
+    })
+    : expiryTime;
 
   return (
     <>
@@ -87,14 +101,13 @@ export function Header({
         <div className="header-right">
           <div className="header-meta" style={{ textAlign: 'right', lineHeight: 1.3 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>
-              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {indiaDate}
             </div>
             <div className="text-muted" style={{ fontSize: 11.5 }}>
-              Prices expire in{' '}
+              Prices expire daily at{' '}
               <strong style={{ color: 'var(--color-accent-700)', fontVariantNumeric: 'tabular-nums' }}>
-                {countdown}
+                {expiryLabel} IST
               </strong>
-              {' '}· {expiryLabel}
             </div>
           </div>
           <div className="header-user">

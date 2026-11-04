@@ -10,23 +10,25 @@ import type { NavItem } from '../types';
 export const NAV: NavItem[] = [
   { key: 'dash', label: 'Dashboard', badge: '' },
   { key: 'users', label: 'Users', badge: '' },
+  { key: 'brokers', label: 'Brokers', badge: '' },
+  { key: 'commodities', label: 'Commodity setup', badge: '' },
   { key: 'listings', label: 'Listings', badge: '' },
   { key: 'negotiations', label: 'Negotiations', badge: '' },
   { key: 'trades', label: 'Trades & brokerage', badge: '' },
-  { key: 'brokers', label: 'Brokers', badge: '' },
-  { key: 'settings', label: 'Settings', badge: '' },
   { key: 'audit', label: 'Audit log', badge: '' },
   { key: 'freight', label: 'Freight', badge: '' },
+  { key: 'settings', label: 'Settings', badge: '' },
 ];
 
 export const PAGES: Record<string, [title: string, subtitle: string, action: string]> = {
   dash: ['Dashboard', 'Live market overview', 'Export day sheet'],
-  users: ['Users & access', 'Invite-only platform. A user can hold both modes.', 'Export user list'],
-  listings: ['Listings oversight', 'Sell listings and buy requirements in one table', 'Export CSV'],
+  users: ['Users & access', 'Invite-only platform. A user can hold both modes.', 'Invite user'],
+  listings: ['Listings oversight', 'Sell listings and buy requirements in one table', 'Export Excel'],
   negotiations: ['Negotiations', 'Live offer threads between buyers and sellers', 'Export thread'],
   trades: ['Trades & brokerage', 'Closed trades and what each broker earned', 'Log offline trade'],
   brokers: ['Brokers', 'Manage brokers and their commodity-level commission', 'Add broker'],
-  settings: ['Settings', 'Platform-wide rules and taxonomy', 'Save changes'],
+  settings: ['Settings', 'Platform-wide rules, expiry and terms', 'Save changes'],
+  commodities: ['Commodity setup', 'Manage categories, commodities and qualities', 'Add category'],
   audit: ['Audit log', 'Every admin action, attributable and reversible', 'Export log'],
   freight: ['Freight management', 'Origin → destination road-freight rates, per quintal', 'Upload freight sheet'],
 };

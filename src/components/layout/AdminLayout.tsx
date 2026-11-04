@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { PAGES } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
 import { Header } from './Header';
@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
 
 const PATH_TO_SCREEN: Record<string, string> = {
   dash: 'dash', users: 'users', listings: 'listings', negotiations: 'negotiations',
-  trades: 'trades', settings: 'settings', audit: 'audit', freight: 'freight', brokers: 'brokers',
+  trades: 'trades', settings: 'settings', commodities: 'commodities', audit: 'audit', freight: 'freight', brokers: 'brokers',
 };
 
 const SIDEBAR_KEY = 'kkpk-sidebar-collapsed';
@@ -31,13 +31,17 @@ function initialCollapsed(): boolean {
  */
 export function AdminLayout() {
   const {
-    toast, flash, previewFreightUpload, exportCsv, rows, trades, liveMode, openBrokerAdd,
+    toast, flash, previewFreightUpload, exportCsv, exportListingsWorkbook, trades, liveMode, openBrokerAdd,
   } = useAdmin();
-  const navigate = useNavigate();
   const location = useLocation();
   const freightFileInput = useRef<HTMLInputElement>(null);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const seg = location.pathname.split('/')[1] || 'dash';
   const page = PAGES[PATH_TO_SCREEN[seg] ?? 'dash'] ?? PAGES.dash;
+
+  useEffect(() => {
+    if (seg !== 'users') setInviteModalOpen(false);
+  }, [seg]);
 
   // Collapsible sidebar: auto-collapses on narrower screens until the user
   // picks a preference (persisted to localStorage).
@@ -80,6 +84,10 @@ export function AdminLayout() {
   }, [page]);
 
   const handlePrimary = () => {
+    if (seg === 'commodities') {
+      document.getElementById('commodity-category-name')?.focus();
+      return;
+    }
     if (seg === 'brokers') {
       if (!liveMode) {
         flash('Connect to the live service before adding brokers.');
@@ -104,15 +112,11 @@ export function AdminLayout() {
       return;
     }
     if (seg === 'listings') {
-      exportCsv('listings', 'listings.csv', [
-        ['Side', 'Firm', 'Item', 'Category', 'Weight', 'Price', 'Status'],
-        ...rows.map((r) => [r.side, r.firm, r.item, r.category, r.weight, r.price == null ? 'N/A' : String(r.price), r.status]),
-      ]);
+      void exportListingsWorkbook();
       return;
     }
     if (seg === 'users') {
-      navigate('/users');
-      flash('User list is shown below — use Send invite to add a user');
+      setInviteModalOpen(true);
       return;
     }
     flash('Action stub — wire in build');
@@ -151,7 +155,10 @@ export function AdminLayout() {
             ) : null}
           </div>
           {toast ? <div className="toast" role="status">{toast}</div> : null}
-          <Outlet />
+          <Outlet context={{
+            inviteModalOpen,
+            closeInviteModal: () => setInviteModalOpen(false),
+          }} />
         </div>
       </div>
     </div>
