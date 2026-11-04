@@ -48,6 +48,7 @@ export interface ListingRow {
   firm: string;
   subEntity: string;
   item: string;
+  quality: string;
   category: string;
   weight: string;
   price: number | null;

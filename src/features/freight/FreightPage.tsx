@@ -71,14 +71,14 @@ export function FreightPage() {
   }, [freightRoutes, freightSearch, freightStatusFilter, searchQuery, liveMode]);
 
   const totalPages = liveMode
-    ? freightTotalPages
+    ? Math.max(1, freightTotalPages)
     : Math.max(1, Math.ceil(view.length / FREIGHT_PAGE_SIZE));
   const visibleRoutes = liveMode
     ? view
     : view.slice((freightPage - 1) * FREIGHT_PAGE_SIZE, freightPage * FREIGHT_PAGE_SIZE);
 
   useEffect(() => {
-    if (freightPage > totalPages) setFreightPage(totalPages);
+    if (freightPage < 1 || freightPage > totalPages) setFreightPage(totalPages);
   }, [freightPage, setFreightPage, totalPages]);
 
   const editRow = freightRoutes.find((r) => r.id === freightEditId) ?? null;

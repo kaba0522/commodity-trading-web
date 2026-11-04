@@ -27,7 +27,7 @@ export const PAGES: Record<string, [title: string, subtitle: string, action: str
   negotiations: ['Negotiations', 'Live offer threads between buyers and sellers', 'Export thread'],
   trades: ['Trades & brokerage', 'Closed trades and what each broker earned', 'Log offline trade'],
   brokers: ['Brokers', 'Manage brokers and their commodity-level commission', 'Add broker'],
-  settings: ['Settings', 'Platform-wide rules, expiry and terms', 'Save changes'],
+  settings: ['Settings', 'Platform-wide rules, expiry and terms', ''],
   commodities: ['Commodity setup', 'Manage categories, commodities and qualities', 'Add category'],
   audit: ['Audit log', 'Every admin action, attributable and reversible', 'Export log'],
   freight: ['Freight management', 'Origin → destination road-freight rates, per quintal', 'Upload freight sheet'],

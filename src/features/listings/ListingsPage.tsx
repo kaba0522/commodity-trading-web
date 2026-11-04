@@ -1,16 +1,22 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
+import { ApiError } from '../../services/api';
+import { commoditiesApi, type BackendCommodity } from '../../services/backend';
 import { LIVE_PAGE_SIZE, useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
 const GRID: React.CSSProperties = {
   gridTemplateColumns:
-    '64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,.9fr) minmax(0,1fr) 150px',
+    '64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,.9fr) minmax(0,1fr) 150px',
 };
 
 export function ListingsPage() {
   const admin = useAdmin();
+  const [commodityFilter, setCommodityFilter] = useState('');
+  const [commodityOptions, setCommodityOptions] = useState<BackendCommodity[]>([]);
+  const [commoditiesLoading, setCommoditiesLoading] = useState(false);
+  const [commoditiesError, setCommoditiesError] = useState<string | null>(null);
   const {
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
     openEdit, forceExpire, editId, editPrice, setEditPrice, editWeight, setEditWeight,
@@ -19,22 +25,49 @@ export function ListingsPage() {
     listingTotal, listingTotalPages, refreshListings, categories,
   } = admin;
 
+  useEffect(() => {
+    if (!liveMode) return;
+    let active = true;
+    const loadCommodities = async () => {
+      setCommoditiesLoading(true);
+      setCommoditiesError(null);
+      try {
+        const firstPage = await commoditiesApi.list({ page: 1, limit: 100 });
+        const remainingPages = await Promise.all(
+          Array.from({ length: Math.max(0, (firstPage.meta?.totalPages ?? 1) - 1) }, (_, index) =>
+            commoditiesApi.list({ page: index + 2, limit: 100 }).then((result) => result.data),
+          ),
+        );
+        if (active) setCommodityOptions([...firstPage.data, ...remainingPages.flat()]);
+      } catch (error: unknown) {
+        if (active) {
+          setCommoditiesError(error instanceof ApiError ? error.message : 'Could not load commodities.');
+        }
+      } finally {
+        if (active) setCommoditiesLoading(false);
+      }
+    };
+    void loadCommodities();
+    return () => { active = false; };
+  }, [liveMode]);
+
   // Live backend: admin sessions read every user's rows via GET /listings
-  // (side + status + categoryId + itemName filters, 20/page). Debounced so
+  // (side + status + categoryId + commodityId + itemName filters, 20/page). Debounced so
   // typing in global search doesn't fan out requests.
   useEffect(() => {
     if (!liveMode) return;
-    const id = window.setTimeout(() => void refreshListings(), 350);
+    const id = window.setTimeout(() => void refreshListings(commodityFilter || undefined), 350);
     return () => window.clearTimeout(id);
-  }, [liveMode, refreshListings]);
+  }, [liveMode, refreshListings, commodityFilter]);
 
   // Any filter or search change starts a new result set at page 1.
   useEffect(() => {
     setListingPage(1);
-  }, [sideFilter, catFilter, statusFilter, searchQuery, setListingPage]);
+  }, [sideFilter, catFilter, statusFilter, searchQuery, commodityFilter, setListingPage]);
 
   // Reset to page 1 immediately on filter clicks for instant feedback.
   const resetPage = () => setListingPage(1);
+  const demoCommodities = useMemo(() => [...new Set(rows.map((row) => row.item))].sort(), [rows]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -43,9 +76,10 @@ export function ListingsPage() {
         (sideFilter === 'all' || r.side === sideFilter) &&
         (catFilter === 'All categories' || r.category === catFilter) &&
         (statusFilter === 'All statuses' || r.status === statusFilter) &&
+        (liveMode || !commodityFilter || r.item === commodityFilter) &&
         (!q || r.firm.toLowerCase().includes(q) || r.item.toLowerCase().includes(q) || r.category.toLowerCase().includes(q)),
     );
-  }, [rows, sideFilter, catFilter, statusFilter, searchQuery]);
+  }, [rows, sideFilter, catFilter, statusFilter, searchQuery, commodityFilter, liveMode]);
 
   const editRow = rows.find((r) => r.id === editId) ?? null;
 
@@ -63,6 +97,23 @@ export function ListingsPage() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+        <select
+          className="input"
+          value={commodityFilter}
+          onChange={(e) => { setCommodityFilter(e.target.value); resetPage(); }}
+          style={{ height: 34, width: 180, fontSize: 12.5 }}
+          aria-label="Filter by commodity"
+          disabled={liveMode && commoditiesLoading}
+        >
+          <option value="">{commoditiesLoading ? 'Loading commodities…' : 'All commodities'}</option>
+          {liveMode
+            ? commodityOptions.map((commodity) => (
+              <option key={commodity.id} value={commodity.id}>{commodity.name}</option>
+            ))
+            : demoCommodities.map((commodity) => (
+              <option key={commodity} value={commodity}>{commodity}</option>
+            ))}
+        </select>
         <select className="input" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); resetPage(); }} style={{ height: 34, width: 170, fontSize: 12.5 }}>
           {['All statuses', 'Active', 'Price expired', 'Traded', 'Withdrawn', 'N/A'].map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -76,14 +127,15 @@ export function ListingsPage() {
       </div>
 
       {listingsError ? <div className="field-error">{listingsError}</div> : null}
+      {commoditiesError ? <div className="field-error">{commoditiesError}</div> : null}
 
       <div className="panel">
         <div className="table-scroll">
-          <div className="grid-head" style={{ ...GRID, minWidth: 980 }}>
-            <div>SIDE</div><div>FIRM</div><div>ITEM</div><div>CATEGORY</div><div>WEIGHT</div><div>PRICE</div><div>STATUS · VALID</div><div />
+          <div className="grid-head" style={{ ...GRID, minWidth: 1100 }}>
+            <div>SIDE</div><div>FIRM</div><div>COMODITY</div><div>QUALITY</div><div>CATEGORY</div><div>WEIGHT PER BAG</div><div>PRICE</div><div>STATUS · VALID</div><div>ACTION</div>
           </div>
           {filtered.map((r) => (
-            <div key={r.id} className="grid-row" style={{ ...GRID, minWidth: 980 }}>
+            <div key={r.id} className="grid-row" style={{ ...GRID, minWidth: 1100 }}>
               <div>
                 <span className={`tag ${r.side === 'SELL' ? 'tag-accent' : 'tag-accent-2'}`} style={{ fontSize: 10, padding: '2px 8px' }}>{r.side}</span>
               </div>
@@ -92,6 +144,7 @@ export function ListingsPage() {
                 <div className="text-muted" style={{ fontSize: 11 }}>{r.subEntity || '—'}</div>
               </div>
               <div style={{ fontWeight: 600 }}>{r.item}</div>
+              <div className="text-muted">{r.quality}</div>
               <div className="text-muted">{r.category}</div>
               <div className="text-muted">{r.weight}</div>
               <div style={r.price == null
@@ -124,10 +177,6 @@ export function ListingsPage() {
         onPageChange={setListingPage}
         disabled={listingsLoading}
       />
-      <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
-        Editing on a user&apos;s behalf writes an entry to the audit log with before/after values.
-      </p>
-
       {editRow ? (
         <Modal
           title={`Edit on behalf of ${editRow.firm}`}

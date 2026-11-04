@@ -237,7 +237,7 @@ interface AdminState {
   setListingPage: (p: number) => void;
   listingTotal: number;
   listingTotalPages: number;
-  refreshListings: () => Promise<void>;
+  refreshListings: (commodityId?: string) => Promise<void>;
   settingsLoading: boolean;
   settingsError: string | null;
   refreshLiveSettings: () => Promise<void>;
@@ -346,6 +346,7 @@ function mapBackendListing(b: BackendListing, index: number, categoryName: (id: 
     firm: b.user?.firmName || b.user?.name || '—',
     subEntity: b.user?.phone ?? '',
     item: b.itemName,
+    quality: b.quality ?? '—',
     category: categoryName(b.categoryId),
     weight: b.weightKg != null ? `${b.weightKg}KG` : '—',
     price: b.price,
@@ -485,7 +486,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [expiryTime, setExpiryTime] = useState('02:00');
   const [freightExpiryTime, setFreightExpiryTime] = useState('02:00');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
-  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState('10-15 days');
+  const [defaultPaymentTerms, setDefaultPaymentTerms] = useState(() => {
+    try {
+      return localStorage.getItem('kkpk-default-payment-terms') ?? '10-15 days';
+    } catch {
+      return '10-15 days';
+    }
+  });
 
   // Session-local fallback for demo mode; live audit entries come from /audit-logs.
   const [audit, setAudit] = useState<AuditEntry[]>([]);
@@ -637,7 +644,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, [liveMode]);
 
-  const refreshListings = useCallback(async () => {
+  const refreshListings = useCallback(async (commodityId?: string) => {
     if (!liveMode) return;
     setListingsLoading(true);
     setListingsError(null);
@@ -651,6 +658,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       const query = {
         status: statusParam,
         categoryId: catId,
+        commodityId,
         itemName: searchQuery.trim() || undefined,
       };
       const sides = sideFilter === 'all' ? ['SELL', 'BUY'] as const : [sideFilter as 'SELL' | 'BUY'];
@@ -737,19 +745,20 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const refreshFreight = useCallback(async (requestedPage = freightPage) => {
     if (!liveMode) return;
+    const page = Number.isFinite(requestedPage) ? Math.max(1, Math.floor(requestedPage)) : 1;
     setFreightLoading(true);
     setFreightError(null);
     try {
       const { data, meta } = await freightApi.list({
         destination: freightSearch.trim() || undefined,
-        page: requestedPage,
+        page,
         limit: FREIGHT_PAGE_SIZE,
       });
       setFreightRoutes(data.map(mapBackendFreight));
       const total = meta?.total ?? data.length;
       setFreightTotal(total);
       setFreightTotalPages(meta?.totalPages ?? Math.ceil(total / FREIGHT_PAGE_SIZE));
-      if (meta?.totalPages && requestedPage > meta.totalPages) setFreightPage(meta.totalPages);
+      if (meta?.totalPages && page > meta.totalPages) setFreightPage(meta.totalPages);
     } catch (e) {
       setFreightRoutes([]);
       setFreightTotal(0);
@@ -789,6 +798,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setSettingsLoading(false);
     }
   }, [liveMode, ensureCategories]);
+
+  useEffect(() => {
+    if (liveMode) void refreshLiveSettings();
+  }, [liveMode, refreshLiveSettings]);
 
   const refreshCommodities = useCallback(async (categoryId?: string) => {
     if (!liveMode) return;

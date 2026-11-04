@@ -133,13 +133,15 @@ export function AdminLayout() {
               <h1 style={{ fontSize: 23, marginBottom: 3 }}>{page[0]}</h1>
               <p className="text-muted" style={{ fontSize: 13, margin: 0 }}>{page[1]}</p>
             </div>
-            <button
-              className="btn btn-primary"
-              onClick={handlePrimary}
-              style={{ height: 38, padding: '0 18px', fontSize: 13 }}
-            >
-              {page[2]}
-            </button>
+            {page[2] ? (
+              <button
+                className="btn btn-primary"
+                onClick={handlePrimary}
+                style={{ height: 38, padding: '0 18px', fontSize: 13 }}
+              >
+                {page[2]}
+              </button>
+            ) : null}
             {seg === 'freight' ? (
               <input
                 ref={freightFileInput}
