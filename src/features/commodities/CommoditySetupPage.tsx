@@ -102,7 +102,7 @@ export function CommoditySetupPage() {
                       No qualities
                     </span>
                   ) : null}
-                  <button className="btn btn-secondary" onClick={() => renameCategory(category)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
+                  <button className="btn btn-primary" onClick={() => renameCategory(category)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
                     Rename
                   </button>
                   <button
@@ -161,7 +161,7 @@ export function CommoditySetupPage() {
                   <div key={commodity.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
                     <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{commodity.name}</div>
                     <button
-                      className="btn btn-secondary"
+                      className="btn btn-primary"
                       onClick={() => {
                         const next = window.prompt('Rename commodity:', commodity.name);
                         if (next?.trim() && next.trim() !== commodity.name) {
@@ -230,7 +230,7 @@ export function CommoditySetupPage() {
                   <div key={quality.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
                     <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{quality.name}</div>
                     <button
-                      className="btn btn-secondary"
+                      className="btn btn-primary"
                       onClick={() => {
                         const next = window.prompt('Rename quality:', quality.name);
                         if (next?.trim() && next.trim() !== quality.name) {

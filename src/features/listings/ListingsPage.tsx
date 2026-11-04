@@ -7,8 +7,9 @@ import { LIVE_PAGE_SIZE, useAdmin } from '../../store/AdminContext';
 import { inr } from '../../utils/format';
 
 const GRID: React.CSSProperties = {
+  columnGap: 14,
   gridTemplateColumns:
-    '64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,.9fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,.9fr) minmax(0,1fr) 150px',
+    '64px minmax(0,1.5fr) minmax(0,1.6fr) minmax(0,.9fr) minmax(0,.8fr) minmax(130px,.7fr) minmax(100px,.9fr) minmax(0,1fr) 150px',
 };
 
 export function ListingsPage() {
@@ -132,7 +133,7 @@ export function ListingsPage() {
       <div className="panel">
         <div className="table-scroll">
           <div className="grid-head" style={{ ...GRID, minWidth: 1100 }}>
-            <div>SIDE</div><div>FIRM</div><div>COMODITY</div><div>QUALITY</div><div>CATEGORY</div><div>WEIGHT PER BAG</div><div>PRICE</div><div>STATUS · VALID</div><div>ACTION</div>
+            <div>SIDE</div><div>FIRM</div><div>CATEGORY</div><div>COMMODITY</div><div>QUALITY</div><div>WEIGHT PER BAG</div><div>PRICE</div><div>STATUS · VALID</div><div style={{ justifySelf: 'end' }}>ACTION</div>
           </div>
           {filtered.map((r) => (
             <div key={r.id} className="grid-row" style={{ ...GRID, minWidth: 1100 }}>
@@ -143,9 +144,9 @@ export function ListingsPage() {
                 <div style={{ fontWeight: 600 }}>{r.firm}</div>
                 <div className="text-muted" style={{ fontSize: 11 }}>{r.subEntity || '—'}</div>
               </div>
+              <div className="text-muted">{r.category}</div>
               <div style={{ fontWeight: 600 }}>{r.item}</div>
               <div className="text-muted">{r.quality}</div>
-              <div className="text-muted">{r.category}</div>
               <div className="text-muted">{r.weight}</div>
               <div style={r.price == null
                 ? { fontWeight: 600, color: '#d64545' }

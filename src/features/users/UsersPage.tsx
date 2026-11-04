@@ -58,6 +58,7 @@ export function UsersPage() {
   } = admin;
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [userToSuspend, setUserToSuspend] = useState<UserRecord | null>(null);
 
   // Live backend: users come from the directory and pending users from invites.
   useEffect(() => {
@@ -273,8 +274,11 @@ export function UsersPage() {
                     Edit
                   </button>
                   <button
-                    className="btn btn-secondary"
-                    onClick={() => suspendUser(u.id)}
+                    className="btn btn-danger"
+                    onClick={() => {
+                      if (u.status === "Suspended") suspendUser(u.id);
+                      else setUserToSuspend(u);
+                    }}
                     style={{ height: 28, padding: "0 10px", fontSize: 11.5 }}
                   >
                     {u.status === "Suspended" ? "Restore" : "Suspend"}
@@ -298,6 +302,26 @@ export function UsersPage() {
           />
         ) : null}
       </div>
+
+      {userToSuspend ? (
+        <Modal
+          title="Suspend user?"
+          subtitle={`Confirm that you want to suspend ${userToSuspend.firm}.`}
+          onClose={() => setUserToSuspend(null)}
+          onSave={() => {
+            suspendUser(userToSuspend.id);
+            setUserToSuspend(null);
+          }}
+          saveLabel="Suspend user"
+          saveClassName="btn btn-danger"
+        >
+          <div className="text-muted" style={{ fontSize: 13 }}>
+            {liveMode
+              ? "This status change applies only in this console and will not be saved to the backend."
+              : "You can restore this user later."}
+          </div>
+        </Modal>
+      ) : null}
 
       {editingUser ? (
         <Modal
