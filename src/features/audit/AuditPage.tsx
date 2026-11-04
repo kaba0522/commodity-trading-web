@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useOutletContext } from 'react-router-dom';
 import { EmptyState, Pagination, usePagination } from '../../components/common/controls';
 import { auditLogsApi } from '../../services/backend';
 import { ApiError } from '../../services/api';
 import { useAdmin } from '../../store/AdminContext';
-import type { BackendAuditEntry, BackendAuditFilterOptions } from '../../services/backend';
+import type { BackendAuditEntry, BackendAuditFilterOptions, BackendAuditFilters } from '../../services/backend';
+
+interface AuditOutletContext {
+  registerPrimaryAction: (action: (() => void) | null) => void;
+}
 
 const LIVE_GRID: React.CSSProperties = {
   gridTemplateColumns: '155px minmax(140px,1fr) minmax(170px,1.2fr) minmax(180px,1.2fr) minmax(190px,1.3fr)',
@@ -116,10 +121,25 @@ function AuditChangeSummary({ entry }: { entry: BackendAuditEntry }) {
 
 export function AuditPage() {
   const { liveMode } = useAdmin();
-  return liveMode ? <LiveAuditPage /> : <DemoAuditPage />;
+  const { registerPrimaryAction } = useOutletContext<AuditOutletContext>();
+  return liveMode
+    ? <LiveAuditPage registerPrimaryAction={registerPrimaryAction} />
+    : <DemoAuditPage registerPrimaryAction={registerPrimaryAction} />;
 }
 
-function LiveAuditPage() {
+async function fetchAllAuditEntries(filters: Omit<BackendAuditFilters, 'page' | 'limit'>) {
+  const limit = 100;
+  const firstPage = await auditLogsApi.list({ ...filters, page: 1, limit });
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, (firstPage.meta?.totalPages ?? 1) - 1) }, (_, index) =>
+      auditLogsApi.list({ ...filters, page: index + 2, limit }).then((result) => result.data),
+    ),
+  );
+  return [...firstPage.data, ...remainingPages.flat()];
+}
+
+function LiveAuditPage({ registerPrimaryAction }: AuditOutletContext) {
+  const { exportCsv, flash } = useAdmin();
   const [filterOptions, setFilterOptions] = useState<BackendAuditFilterOptions | null>(null);
   const [filtersError, setFiltersError] = useState<string | null>(null);
   const [entries, setEntries] = useState<BackendAuditEntry[]>([]);
@@ -133,6 +153,7 @@ function LiveAuditPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
+  const exportInProgress = useRef(false);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
@@ -188,6 +209,54 @@ function LiveAuditPage() {
     setter(value);
     setPage(1);
   };
+
+  const exportAuditLog = useCallback(async () => {
+    if (exportInProgress.current) return;
+    exportInProgress.current = true;
+    flash('Preparing audit log export…');
+    try {
+      const allEntries = await fetchAllAuditEntries({
+        actorUserId: actorUserId || undefined,
+        action: action || undefined,
+        entity: entity || undefined,
+        q: debouncedSearch || undefined,
+      });
+      const entriesWithSnapshots: BackendAuditEntry[] = [];
+      for (let index = 0; index < allEntries.length; index += 10) {
+        const batch = await Promise.all(allEntries.slice(index, index + 10).map(async (entry) => {
+          if (!entry.changedFields.length || (entry.before !== undefined && entry.after !== undefined)) return entry;
+          return auditLogsApi.getById(entry.id);
+        }));
+        entriesWithSnapshots.push(...batch);
+      }
+      exportCsv('generic', 'audit-log.csv', [
+        ['Created at', 'Admin', 'Admin phone', 'Action', 'Entity', 'Entity ID', 'Changed fields', 'Before', 'After'],
+        ...entriesWithSnapshots.map((entry) => {
+          const summary = auditSummary(entry);
+          return [
+            entry.createdAt,
+            entry.actor?.name || 'Unknown admin',
+            entry.actor?.phone ?? '',
+            entry.action,
+            entry.entity,
+            entry.entityId,
+            entry.changedFields.join(', '),
+            summary.before,
+            summary.after,
+          ];
+        }),
+      ]);
+    } catch (error) {
+      flash(error instanceof ApiError ? error.message : 'Could not export audit log.');
+    } finally {
+      exportInProgress.current = false;
+    }
+  }, [actorUserId, action, entity, debouncedSearch, exportCsv, flash]);
+
+  useEffect(() => {
+    registerPrimaryAction(() => { void exportAuditLog(); });
+    return () => registerPrimaryAction(null);
+  }, [exportAuditLog, registerPrimaryAction]);
 
   return (
     <>
@@ -281,8 +350,8 @@ function LiveAuditPage() {
   );
 }
 
-function DemoAuditPage() {
-  const { audit, auditAdmin, setAuditAdmin, auditAction, setAuditAction, auditQuery, setAuditQuery } = useAdmin();
+function DemoAuditPage({ registerPrimaryAction }: AuditOutletContext) {
+  const { audit, auditAdmin, setAuditAdmin, auditAction, setAuditAction, auditQuery, setAuditQuery, exportCsv } = useAdmin();
 
   const filtered = useMemo(() => {
     const q = auditQuery.trim().toLowerCase();
@@ -299,6 +368,25 @@ function DemoAuditPage() {
   const { page, setPage, totalPages, pageItems } = usePagination(
     filtered, 10, `${auditAdmin}|${auditAction}|${auditQuery}`,
   );
+
+  const exportAuditLog = useCallback(() => {
+    exportCsv('generic', 'audit-log.csv', [
+      ['When', 'Admin', 'Action', 'Entity', 'Before', 'After'],
+      ...filtered.map((entry) => [
+        entry.when,
+        entry.admin,
+        entry.action,
+        entry.entity,
+        entry.before,
+        entry.after,
+      ]),
+    ]);
+  }, [exportCsv, filtered]);
+
+  useEffect(() => {
+    registerPrimaryAction(exportAuditLog);
+    return () => registerPrimaryAction(null);
+  }, [exportAuditLog, registerPrimaryAction]);
 
   return (
     <>

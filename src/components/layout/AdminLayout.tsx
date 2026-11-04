@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { PAGES } from '../../data/constants';
 import { useAdmin } from '../../store/AdminContext';
@@ -35,9 +35,13 @@ export function AdminLayout() {
   } = useAdmin();
   const location = useLocation();
   const freightFileInput = useRef<HTMLInputElement>(null);
+  const primaryActionRef = useRef<(() => void) | null>(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const seg = location.pathname.split('/')[1] || 'dash';
   const page = PAGES[PATH_TO_SCREEN[seg] ?? 'dash'] ?? PAGES.dash;
+  const registerPrimaryAction = useCallback((action: (() => void) | null) => {
+    primaryActionRef.current = action;
+  }, []);
 
   useEffect(() => {
     if (seg !== 'users') setInviteModalOpen(false);
@@ -119,6 +123,11 @@ export function AdminLayout() {
       setInviteModalOpen(true);
       return;
     }
+    if (seg === 'audit') {
+      if (primaryActionRef.current) primaryActionRef.current();
+      else flash('Audit log is still loading.');
+      return;
+    }
     flash('Action stub — wire in build');
   };
 
@@ -160,6 +169,7 @@ export function AdminLayout() {
           <Outlet context={{
             inviteModalOpen,
             closeInviteModal: () => setInviteModalOpen(false),
+            registerPrimaryAction,
           }} />
         </div>
       </div>

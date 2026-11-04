@@ -278,7 +278,7 @@ export function useAdmin(): AdminState {
 function downloadCsv(filename: string, rows: string[][]) {
   const esc = (c: string) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c);
   const csv = rows.map((r) => r.map(esc).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -286,7 +286,7 @@ function downloadCsv(filename: string, rows: string[][]) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function downloadListingsWorkbook(headers: string[], sellerRows: Array<Array<string | number>>, buyerRows: Array<Array<string | number>>) {
