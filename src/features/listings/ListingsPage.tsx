@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
+import { ConfirmDialog, EmptyState, Field, FilterTag, Modal, Pagination } from '../../components/common/controls';
 import { STATUS_CLS } from '../../data/constants';
+import type { ListingRow } from '../../types';
 import { ApiError } from '../../services/api';
 import {
   categoriesApi,
@@ -21,7 +22,7 @@ import { inr } from '../../utils/format';
 const GRID: React.CSSProperties = {
   columnGap: 14,
   gridTemplateColumns:
-    '64px minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,1.2fr) minmax(72px,.7fr) minmax(0,.8fr) minmax(105px,.7fr) minmax(100px,.9fr) minmax(0,1fr) 150px',
+    '64px minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,1.2fr) minmax(72px,.7fr) minmax(0,.8fr) minmax(105px,.7fr) minmax(100px,.9fr) minmax(0,1fr) 215px',
 };
 
 async function loadAllPages<T>(
@@ -67,9 +68,10 @@ export function ListingsPage() {
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSaving, setCreateSaving] = useState(false);
+  const [actionTarget, setActionTarget] = useState<{ kind: 'withdraw' | 'expire'; row: ListingRow } | null>(null);
   const {
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
-    openEdit, forceExpire, editId, editPrice, setEditPrice, editQuantity, setEditQuantity,
+    openEdit, forceExpire, withdrawListing, restoreListing, editId, editPrice, setEditPrice, editQuantity, setEditQuantity,
     editWeight, setEditWeight,
     editReason, setEditReason, editError, closeEdit, saveEdit, searchQuery,
     liveMode, listingsLoading, listingsError, listingPage, setListingPage,
@@ -387,10 +389,48 @@ export function ListingsPage() {
                 <div className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>{r.validUntil}</div>
               </div>
               <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
-                <button className="btn btn-primary" onClick={() => openEdit(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Edit</button>
-                {r.side === 'SELL' && r.status === 'Active' ? (
-                  <button className="btn btn-secondary" onClick={() => forceExpire(r.id)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>Expire</button>
-                ) : null}
+                <button className="btn btn-primary" onClick={() => openEdit(r.id)} style={{ height: 28, padding: '0 9px', fontSize: 11.5 }}>Edit</button>
+                {r.status === 'Withdrawn' ? (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => restoreListing(r.id)}
+                    title="Restore this withdrawn listing to Active."
+                    style={{ height: 28, padding: '0 9px', fontSize: 11.5 }}
+                  >
+                    Restore
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setActionTarget({ kind: 'withdraw', row: r })}
+                    disabled={r.status !== 'Active' && r.status !== 'Price expired'}
+                    title={
+                      r.status !== 'Active' && r.status !== 'Price expired'
+                        ? 'This listing is already closed.'
+                        : undefined
+                    }
+                    style={{ height: 28, padding: '0 9px', fontSize: 11.5 }}
+                  >
+                    Withdraw
+                  </button>
+                )}
+                <button
+                  className="btn btn-danger"
+                  onClick={() => setActionTarget({ kind: 'expire', row: r })}
+                  disabled={r.side !== 'SELL' || r.status !== 'Active'}
+                  title={
+                    r.side !== 'SELL'
+                      ? 'Only sell listings carry a price that can expire.'
+                      : r.status !== 'Active'
+                        ? r.status === 'Price expired'
+                          ? 'This price has already expired.'
+                          : 'Only active listings can be expired.'
+                        : undefined
+                  }
+                  style={{ height: 28, padding: '0 9px', fontSize: 11.5 }}
+                >
+                  Expire
+                </button>
               </div>
             </div>
           ))}
@@ -597,6 +637,24 @@ export function ListingsPage() {
           ) : null}
           {createError ? <div className="field-error" role="alert">{createError}</div> : null}
         </Modal>
+      ) : null}
+      {actionTarget ? (
+        <ConfirmDialog
+          title={actionTarget.kind === 'withdraw' ? 'Withdraw this listing?' : 'Expire this price?'}
+          message={
+            actionTarget.kind === 'withdraw'
+              ? 'The listing will be marked Withdrawn and stop appearing in matches. This cannot be undone.'
+              : 'The price will expire immediately. The owner must publish a new price before the listing can be matched again.'
+          }
+          detail={`${actionTarget.row.firm} · ${actionTarget.row.item}`}
+          confirmLabel={actionTarget.kind === 'withdraw' ? 'Withdraw listing' : 'Expire price'}
+          onClose={() => setActionTarget(null)}
+          onConfirm={() => {
+            if (actionTarget.kind === 'withdraw') withdrawListing(actionTarget.row.id);
+            else forceExpire(actionTarget.row.id);
+            setActionTarget(null);
+          }}
+        />
       ) : null}
     </>
   );

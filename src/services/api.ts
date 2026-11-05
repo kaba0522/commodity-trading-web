@@ -45,6 +45,12 @@ export function setOnAuthExpired(fn: (() => void) | null) {
   onAuthExpired = fn;
 }
 
+/** Drop the persisted session and let AuthContext redirect to /login. */
+function expireSession() {
+  clearSession();
+  onAuthExpired?.();
+}
+
 function parseErrorBody(body: unknown, status: number): { code: string; message: string } {
   if (body && typeof body === 'object') {
     const b = body as { error?: { code?: string; message?: string }; message?: string };
@@ -118,11 +124,14 @@ async function request<T>(path: string, init: RequestInit = {}, retry = true): P
     throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the backend. Is it running?');
   }
 
-  if (res.status === 401 && retry && loadSession()?.refreshToken) {
-    const next = await refreshAccessToken();
-    if (next) return request<T>(path, init, false);
-    clearSession();
-    onAuthExpired?.();
+  if (res.status === 401) {
+    if (retry && loadSession()?.refreshToken) {
+      const next = await refreshAccessToken();
+      if (next) return request<T>(path, init, false);
+    }
+    // No refresh token, refresh failed, or the retried request was rejected:
+    // the session is dead, so sign out and send the user to /login.
+    expireSession();
     throw new ApiError(401, 'UNAUTHORIZED', 'Session expired — please sign in again.');
   }
 
@@ -139,7 +148,11 @@ export interface MetaResult<T> {
   meta: PageMeta | undefined;
 }
 
-async function requestWithMeta<T>(path: string, init: RequestInit = {}): Promise<MetaResult<T>> {
+async function requestWithMeta<T>(
+  path: string,
+  init: RequestInit = {},
+  retry = true,
+): Promise<MetaResult<T>> {
   if (!BASE_URL) {
     throw new ApiError(0, 'NO_BACKEND', 'Backend not configured — set VITE_API_BASE_URL to enable live data.');
   }
@@ -150,11 +163,13 @@ async function requestWithMeta<T>(path: string, init: RequestInit = {}): Promise
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the backend. Is it running?');
   }
-  if (res.status === 401 && loadSession()?.refreshToken) {
-    const next = await refreshAccessToken();
-    if (next) return requestWithMeta<T>(path, init);
-    clearSession();
-    onAuthExpired?.();
+  if (res.status === 401) {
+    if (retry && loadSession()?.refreshToken) {
+      const next = await refreshAccessToken();
+      // Only retry once so a rejected token can never loop forever.
+      if (next) return requestWithMeta<T>(path, init, false);
+    }
+    expireSession();
     throw new ApiError(401, 'UNAUTHORIZED', 'Session expired — please sign in again.');
   }
   const body = await readBody(res);

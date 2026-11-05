@@ -242,9 +242,12 @@ export const listingsApi = {
   /** PATCH /listings/:id — admins may edit on behalf of the owner; edits are audited. */
   update: (id: string, patch: ListingUpdateBody) =>
     api.patch<BackendListing>(`/listings/${id}`, patch),
-  /** PATCH /listings/:id/withdraw — owner-only. */
+  /** PATCH /listings/:id/withdraw - owner-only. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
+  /** PATCH /listings/:id/restore - undo a withdrawal (admin/owner). */
+  restore: (id: string) =>
+    api.patch<BackendListing>(`/listings/${id}/restore`, {}),
   /** PATCH /listings/:id/force-expire — admin only. */
   forceExpire: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/force-expire`, {}),

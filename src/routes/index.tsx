@@ -61,10 +61,16 @@ function page(element: React.ReactNode) {
  * always carry the admin role.
  */
 function RequireAdmin() {
-  const { user, isAdmin, isLive } = useAuth();
+  const { user, isAdmin, isLive, sessionExpired } = useAuth();
   const location = useLocation();
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location.pathname + location.search, expired: sessionExpired }}
+      />
+    );
   }
   if (isLive && !isAdmin) return <ForbiddenPage />;
   return <Outlet />;

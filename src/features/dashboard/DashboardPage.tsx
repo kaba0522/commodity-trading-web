@@ -52,7 +52,7 @@ export function DashboardPage() {
   if (invites.length > 0) {
     queue.push({
       count: String(invites.length), title: 'Pending invites',
-      meta: `Oldest: ${invites[invites.length - 1]?.firm ?? '—'}`,
+      meta: `Oldest: ${invites[invites.length - 1]?.firm || invites[invites.length - 1]?.phone || '—'}`,
       action: 'Review', target: 'users', tone: 'info',
     });
   }

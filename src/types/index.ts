@@ -34,7 +34,10 @@ export interface UserRecord {
 
 export interface Invite {
   id: number;
+  /** Firm name captured when the invite was created (blank for live invites). */
   firm: string;
+  /** Invitee mobile number, formatted for display. */
+  phone?: string;
   meta: string;
   /** Backend UUID when loaded live (invites API). Local rows omit it. */
   backendId?: string;

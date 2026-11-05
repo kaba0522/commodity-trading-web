@@ -10,6 +10,8 @@ interface AuthContextValue {
   roles: string[];
   isAdmin: boolean;
   isLive: boolean;
+  /** True after the API client detects an expired/invalid session. */
+  sessionExpired: boolean;
   requestOtp: (phone: string) => Promise<{ demoCode: string | null }>;
   verifyOtp: (phone: string, code: string) => Promise<SessionUser>;
   logout: () => Promise<void>;
@@ -29,6 +31,7 @@ export function useAuth(): AuthContextValue {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(() => authService.getSessionUser());
   const [tosStatus, setTosStatus] = useState<TosStatus | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const isLive = !authService.isDemoMode();
 
   const refreshTos = useCallback(async () => {
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOnAuthExpired(() => {
       setUser(null);
       setTosStatus(null);
+      setSessionExpired(true);
     });
     return () => setOnAuthExpired(null);
   }, []);
@@ -62,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyOtp = useCallback(async (phone: string, code: string) => {
     const u = await authService.verifyOtp(phone, code);
     setUser(u);
+    setSessionExpired(false);
     if (!authService.isDemoMode()) await refreshTos();
     return u;
   }, [refreshTos]);
@@ -70,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await authService.logout();
     setUser(null);
     setTosStatus(null);
+    setSessionExpired(false);
   }, []);
 
   const acceptTos = useCallback(async (version: number) => {
@@ -82,13 +88,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     roles: user?.roles ?? [],
     isAdmin: user ? user.roles.includes('admin') : false,
     isLive,
+    sessionExpired,
     requestOtp,
     verifyOtp,
     logout,
     tosStatus,
     refreshTos,
     acceptTos,
-  }), [user, isLive, requestOtp, verifyOtp, logout, tosStatus, refreshTos, acceptTos]);
+  }), [user, isLive, sessionExpired, requestOtp, verifyOtp, logout, tosStatus, refreshTos, acceptTos]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

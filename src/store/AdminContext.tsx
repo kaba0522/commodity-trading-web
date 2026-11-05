@@ -93,6 +93,8 @@ interface AdminState {
   editError: string | null;
   saveEdit: () => void;
   forceExpire: (id: number) => void;
+  withdrawListing: (id: number) => void;
+  restoreListing: (id: number) => void;
 
   negotiations: Negotiation[];
   negoFilter: 'active' | 'done';
@@ -399,6 +401,18 @@ function displayPhone(raw: string): string {
   return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
 }
 
+/**
+ * Names should never be phone numbers. A few accounts stored their mobile
+ * number in the firm/name field, so treat phone-like values as missing.
+ */
+function cleanDisplayName(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return '';
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length >= 7 && /^\+?[\d\s()-]+$/.test(trimmed)) return '';
+  return trimmed;
+}
+
 function mapDirectoryUser(u: BackendDirectoryUser, index: number): UserRecord {
   const last = u.lastListingAt ? new Date(u.lastListingAt) : null;
   const validLast = last && !Number.isNaN(last.getTime());
@@ -410,8 +424,8 @@ function mapDirectoryUser(u: BackendDirectoryUser, index: number): UserRecord {
   return {
     id: index + 1,
     backendId: u.id,
-    firm: u.firmName?.trim() || u.name?.trim() || displayPhone(u.phone),
-    owner: u.name?.trim() || '—',
+    firm: cleanDisplayName(u.firmName) || '—',
+    owner: cleanDisplayName(u.name) || '—',
     phone: displayPhone(u.phone),
     modes,
     status: 'Active',
@@ -620,7 +634,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setInvites(data.map((inv, i) => ({
         id: i + 1,
         backendId: inv.id,
-        firm: inv.phone,
+        // The invite endpoint only stores the phone and role hint; there is
+        // no firm name to show until the invitee completes signup.
+        firm: '',
+        phone: displayPhone(inv.phone),
         meta: `${inv.roleHint} · invited ${new Date(inv.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`,
       })));
     } catch (e) {
@@ -994,7 +1011,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     if (inviteBuyer) modes.push('Buyer');
     if (inviteSeller) modes.push('Seller');
     setInvites((prev) => [
-      { id: Math.max(0, ...prev.map((i) => i.id)) + 1, firm: inviteeFirm.trim(), meta: `+91 ${digits} · sent just now by Kunj Bihari` },
+      {
+        id: Math.max(0, ...prev.map((i) => i.id)) + 1,
+        firm: inviteeFirm.trim(),
+        phone: `+91 ${digits}`,
+        meta: `+91 ${digits} · sent just now by Kunj Bihari`,
+      },
       ...prev,
     ]);
     logAudit({
@@ -1154,6 +1176,83 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       return prev.map((r) => (r.id === id ? { ...r, status: 'Price expired' as const, validUntil: 'expired by admin' } : r));
     });
     flash('Price expired — expired by admin');
+  }, [flash, logAudit, liveMode, rows, refreshListings]);
+
+  const withdrawListing = useCallback((id: number) => {
+    if (liveMode) {
+      const target = rows.find((r) => r.id === id);
+      if (
+        !target?.backendId ||
+        target.status === 'Withdrawn' ||
+        target.status === 'Traded' ||
+        target.status === 'N/A'
+      ) {
+        flash('This row is stale — reload the list.');
+        return;
+      }
+      const backendId = target.backendId;
+      void (async () => {
+        try {
+          await listingsApi.withdraw(backendId);
+          await refreshListings();
+          setRows((prev) => prev.map((row) => (row.backendId === backendId
+            ? { ...row, status: 'Withdrawn' as const, validUntil: 'withdrawn by admin' }
+            : row)));
+          flash('Listing withdrawn');
+        } catch (e) {
+          flash(liveErr(e, 'Could not withdraw listing.'));
+        }
+      })();
+      return;
+    }
+    setRows((prev) => {
+      const target = prev.find((r) => r.id === id);
+      if (target) {
+        logAudit({
+          admin: 'Kunj Bihari', action: 'Withdraw listing',
+          entity: `${target.side === 'BUY' ? 'Requirement' : 'Listing'} · ${target.item}`,
+          before: target.status, after: 'Withdrawn',
+        });
+      }
+      return prev.map((r) => (r.id === id ? { ...r, status: 'Withdrawn' as const, validUntil: 'withdrawn by admin' } : r));
+    });
+    flash('Listing withdrawn');
+  }, [flash, logAudit, liveMode, rows, refreshListings]);
+
+  const restoreListing = useCallback((id: number) => {
+    if (liveMode) {
+      const target = rows.find((r) => r.id === id);
+      if (!target?.backendId || target.status !== 'Withdrawn') {
+        flash('This row is stale — reload the list.');
+        return;
+      }
+      const backendId = target.backendId;
+      void (async () => {
+        try {
+          await listingsApi.restore(backendId);
+          await refreshListings();
+          setRows((prev) => prev.map((row) => (row.backendId === backendId
+            ? { ...row, status: 'Active' as const, validUntil: 'restored by admin' }
+            : row)));
+          flash('Listing restored');
+        } catch (e) {
+          flash(liveErr(e, 'Could not restore listing.'));
+        }
+      })();
+      return;
+    }
+    setRows((prev) => {
+      const target = prev.find((r) => r.id === id);
+      if (target) {
+        logAudit({
+          admin: 'Kunj Bihari', action: 'Restore listing',
+          entity: `${target.side === 'BUY' ? 'Requirement' : 'Listing'} · ${target.item}`,
+          before: target.status, after: 'Active',
+        });
+      }
+      return prev.map((r) => (r.id === id ? { ...r, status: 'Active' as const, validUntil: 'restored by admin' } : r));
+    });
+    flash('Listing restored');
   }, [flash, logAudit, liveMode, rows, refreshListings]);
 
   const selectNego = useCallback((id: number) => setSelectedNegoId(id), []);
@@ -1753,7 +1852,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     inviteError, sendInvite,
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
     editId, openEdit, closeEdit, editPrice, setEditPrice, editQuantity, setEditQuantity, editWeight, setEditWeight,
-    editReason, setEditReason, editError, saveEdit, forceExpire,
+    editReason, setEditReason, editError, saveEdit, forceExpire, withdrawListing, restoreListing,
     negotiations, negoFilter, setNegoFilter, selectedNegoId, selectNego,
     nudgeMessage, setNudgeMessage, relayPrice, setRelayPrice, relaySide, setRelaySide,
     nudge, relay,
@@ -1807,7 +1906,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     usersLoading, usersError, refreshUsers,
     inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
-    editPrice, editQuantity, editWeight, editReason, editError, saveEdit, forceExpire,
+    editPrice, editQuantity, editWeight, editReason, editError, saveEdit, forceExpire, withdrawListing, restoreListing,
     negotiations, negoFilter, selectedNegoId, selectNego,
     nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv, exportListingsWorkbook,
     brokers, brokersLoading, brokersError,

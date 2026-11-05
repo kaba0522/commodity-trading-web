@@ -16,6 +16,7 @@ export function FreightPage() {
     freightUploadPreview, freightUploadLoading, freightUploadError,
     commitFreightUpload, clearFreightUpload,
     freightStatusFilter, setFreightStatusFilter, publishPending,
+    freightExpiryTime,
     openFreightEdit, removeFreightRoute,
     freightEditId, freightEditLow, setFreightEditLow, freightEditHigh, setFreightEditHigh,
     freightEditCapacity, setFreightEditCapacity, freightEditError, closeFreightEdit, saveFreightEdit,
@@ -127,7 +128,7 @@ export function FreightPage() {
         </select>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span className="text-muted" style={{ fontSize: 12 }}>
-            Per quintal · same 2:00 AM expiry as commodity prices
+            Per quintal · routes expire daily at {freightExpiryTime}
           </span>
           <button
             className="btn btn-primary"

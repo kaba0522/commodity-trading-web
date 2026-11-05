@@ -20,7 +20,9 @@ export function LoginPage() {
   const { user, requestOtp, verifyOtp, isLive } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/dash';
+  const state = location.state as { from?: string; expired?: boolean } | null;
+  const from = state?.from ?? '/dash';
+  const expired = state?.expired === true;
 
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [phone, setPhone] = useState('');
@@ -97,6 +99,12 @@ export function LoginPage() {
             Invite-only. Sign in with an OTP sent to your mobile number.
           </p>
         </div>
+
+        {expired ? (
+          <div className="callout-info" role="status" style={{ marginBottom: 14 }}>
+            <strong>Session expired.</strong> Your sign-in is no longer valid. Please sign in again.
+          </div>
+        ) : null}
 
         <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {step === 'phone' ? (

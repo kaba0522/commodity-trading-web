@@ -23,7 +23,7 @@ const FILTERS = [
 
 const GRID: React.CSSProperties = {
   gridTemplateColumns:
-    "minmax(0,1.7fr) minmax(0,1fr) minmax(0,1.1fr) minmax(0,.95fr) minmax(0,1fr) minmax(0,.9fr) 118px",
+    "minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,1fr) minmax(0,.9fr) minmax(0,.85fr) minmax(0,.95fr) 118px",
 };
 
 export function UsersPage() {
@@ -79,7 +79,7 @@ export function UsersPage() {
         id: -(index + 1),
         firm: invite.firm || "—",
         owner: "Invite pending",
-        phone: invite.firm || "—",
+        phone: invite.phone || "—",
         modes: role ? [role] : [],
         status: "Pending",
         invitedBy: "—",
@@ -118,7 +118,9 @@ export function UsersPage() {
 
   const saveUserEdit = () => {
     if (!editingUser) return;
-    if (!editingUser.firm.trim() || !editingUser.owner.trim()) {
+    const firm = editingUser.firm === "—" ? "" : editingUser.firm.trim();
+    const owner = editingUser.owner === "—" ? "" : editingUser.owner.trim();
+    if (!firm || !owner) {
       setEditError("Firm name and owner name are required.");
       return;
     }
@@ -128,8 +130,8 @@ export function UsersPage() {
     }
     if (
       updateUser(editingUser.id, {
-        firm: editingUser.firm.trim(),
-        owner: editingUser.owner.trim(),
+        firm,
+        owner,
         modes: editingUser.modes,
         paymentTerms: editingUser.paymentTerms.trim(),
       })
@@ -180,13 +182,13 @@ export function UsersPage() {
         ) : null}
         <div className="panel">
           <div className="table-scroll">
-            <div className="grid-head" style={{ ...GRID, minWidth: 860 }}>
-              <div>FIRM</div>
+            <div className="grid-head" style={{ ...GRID, minWidth: 980 }}>
+              <div>FIRM NAME</div>
+              <div>OWNER NAME</div>
               <div>PHONE</div>
               <div>ROLE</div>
               <div>PAYMENT</div>
               <div>INVITED BY</div>
-              {/* <div>LAST ACTIVITY</div> */}
               <div />
             </div>
             {usersLoading ? (
@@ -201,7 +203,7 @@ export function UsersPage() {
               <div
                 key={u.id}
                 className="grid-row"
-                style={{ ...GRID, minWidth: 860 }}
+                style={{ ...GRID, minWidth: 980 }}
               >
                 <div style={{ minWidth: 0 }}>
                   <div
@@ -221,13 +223,8 @@ export function UsersPage() {
                       {u.status}
                     </span>
                   </div>
-                  <div
-                    className="text-muted"
-                    style={{ fontSize: 11.5, marginTop: 1 }}
-                  >
-                    {u.owner}
-                  </div>
                 </div>
+                <div style={{ minWidth: 0, fontWeight: 500 }}>{u.owner}</div>
                 <div style={{ fontVariantNumeric: "tabular-nums" }}>
                   {u.phone}
                 </div>
@@ -249,7 +246,6 @@ export function UsersPage() {
                   {u.paymentTerms || "—"}
                 </div>
                 <div className="text-muted">{u.invitedBy}</div>
-                {/* <div className="text-muted">{u.lastActive}</div> */}
                 <div
                   style={{
                     display: "flex",
@@ -306,7 +302,13 @@ export function UsersPage() {
       {userToSuspend ? (
         <Modal
           title="Suspend user?"
-          subtitle={`Confirm that you want to suspend ${userToSuspend.firm}.`}
+          subtitle={`Confirm that you want to suspend ${
+            userToSuspend.firm !== "—"
+              ? userToSuspend.firm
+              : userToSuspend.owner !== "—"
+                ? userToSuspend.owner
+                : userToSuspend.phone
+          }.`}
           onClose={() => setUserToSuspend(null)}
           onSave={() => {
             suspendUser(userToSuspend.id);
@@ -338,7 +340,7 @@ export function UsersPage() {
             <Field label="Owner name" required>
               <input
                 className="input"
-                value={editingUser.owner}
+                value={editingUser.owner === "—" ? "" : editingUser.owner}
                 onChange={(event) =>
                   setEditingUser({ ...editingUser, owner: event.target.value })
                 }
@@ -350,7 +352,7 @@ export function UsersPage() {
             <Field label="Firm name" required>
               <input
                 className="input"
-                value={editingUser.firm}
+                value={editingUser.firm === "—" ? "" : editingUser.firm}
                 onChange={(event) =>
                   setEditingUser({ ...editingUser, firm: event.target.value })
                 }
