@@ -227,25 +227,6 @@ export function ListingsPage() {
   const editRow = rows.find((r) => r.id === editId) ?? null;
   const selectedOwner = ownerOptions.find((owner) => owner.id === ownerUserId) ?? null;
 
-  const openCreate = () => {
-    setCreateSide('SELL');
-    setCreateCategoryId('');
-    setCreateCommodityId('');
-    setCreateQualityId('');
-    setCreateQuantity('');
-    setCreateWeight('');
-    setCreatePrice('');
-    setCreatePaymentTerms('');
-    setCreateNotes('');
-    setOwnerSearch('');
-    setOwnerPage(1);
-    setOwnerOptions([]);
-    setOwnerUserId('');
-    setOwnerError(null);
-    setCreateError(null);
-    setCreateOpen(true);
-  };
-
   const closeCreate = () => {
     setCreateOpen(false);
     setCreateError(null);
