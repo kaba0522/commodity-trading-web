@@ -69,6 +69,9 @@ export function ListingsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSaving, setCreateSaving] = useState(false);
   const [actionTarget, setActionTarget] = useState<{ kind: 'withdraw' | 'expire'; row: ListingRow } | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<ListingRow | null>(null);
+  const [restorePrice, setRestorePrice] = useState('');
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   const {
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
     openEdit, forceExpire, withdrawListing, restoreListing, editId, editPrice, setEditPrice, editQuantity, setEditQuantity,
@@ -308,6 +311,33 @@ export function ListingsPage() {
     }
   };
 
+  const openRestore = (row: ListingRow) => {
+    setRestoreTarget(row);
+    setRestorePrice('');
+    setRestoreError(null);
+  };
+
+  const closeRestore = () => {
+    setRestoreTarget(null);
+    setRestoreError(null);
+  };
+
+  const submitRestore = () => {
+    if (!restoreTarget) return;
+    const trimmed = restorePrice.trim();
+    let price: number | null = null;
+    if (restoreTarget.side === 'SELL' && trimmed) {
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        setRestoreError('Enter a price of ₹0 or more, or leave it blank.');
+        return;
+      }
+      price = parsed;
+    }
+    restoreListing(restoreTarget.id, price);
+    closeRestore();
+  };
+
   return (
     <>
       <div className="panel filter-bar">
@@ -393,8 +423,8 @@ export function ListingsPage() {
                 {r.status === 'Withdrawn' ? (
                   <button
                     className="btn btn-primary"
-                    onClick={() => restoreListing(r.id)}
-                    title="Restore this withdrawn listing to Active."
+                    onClick={() => openRestore(r)}
+                    title="Restore this withdrawn listing."
                     style={{ height: 28, padding: '0 9px', fontSize: 11.5 }}
                   >
                     Restore
@@ -636,6 +666,43 @@ export function ListingsPage() {
             </>
           ) : null}
           {createError ? <div className="field-error" role="alert">{createError}</div> : null}
+        </Modal>
+      ) : null}
+      {restoreTarget ? (
+        <Modal
+          title="Restore this listing?"
+          subtitle={`${restoreTarget.firm} · ${restoreTarget.item}`}
+          onClose={closeRestore}
+          onSave={submitRestore}
+          saveLabel="Restore listing"
+        >
+          {restoreTarget.side === 'SELL' ? (
+            <>
+              <Field label="Restored price (₹)">
+                <input
+                  className="input"
+                  value={restorePrice}
+                  onChange={(event) => {
+                    setRestorePrice(event.target.value);
+                    setRestoreError(null);
+                  }}
+                  inputMode="decimal"
+                  placeholder="Blank = restore as N/A"
+                  autoFocus
+                />
+              </Field>
+              <div className="callout-info">
+                Enter a price to restore as <strong>Active</strong> (visible to buyers).
+                Leave it blank to restore as <strong>N/A</strong> — the seller can add a
+                price later to make it active.
+              </div>
+            </>
+          ) : (
+            <div className="callout-info">
+              This buy requirement will be restored to <strong>Active</strong>.
+            </div>
+          )}
+          {restoreError ? <div className="field-error" role="alert">{restoreError}</div> : null}
         </Modal>
       ) : null}
       {actionTarget ? (

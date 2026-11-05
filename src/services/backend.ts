@@ -245,9 +245,13 @@ export const listingsApi = {
   /** PATCH /listings/:id/withdraw - owner-only. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
-  /** PATCH /listings/:id/restore - undo a withdrawal (admin/owner). */
-  restore: (id: string) =>
-    api.patch<BackendListing>(`/listings/${id}/restore`, {}),
+  /**
+   * PATCH /listings/:id/restore - undo a withdrawal (admin/owner).
+   * SELL: send { price } to restore as active, or omit it to restore as N/A.
+   * BUY: omit the body (sending a price is rejected).
+   */
+  restore: (id: string, body?: { price: number }) =>
+    api.patch<BackendListing>(`/listings/${id}/restore`, body),
   /** PATCH /listings/:id/force-expire — admin only. */
   forceExpire: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/force-expire`, {}),

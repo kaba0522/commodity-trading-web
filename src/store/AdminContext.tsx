@@ -94,7 +94,8 @@ interface AdminState {
   saveEdit: () => void;
   forceExpire: (id: number) => void;
   withdrawListing: (id: number) => void;
-  restoreListing: (id: number) => void;
+  /** SELL: pass a price to restore as Active; omit/null to restore as N/A. */
+  restoreListing: (id: number, price?: number | null) => void;
 
   negotiations: Negotiation[];
   negoFilter: 'active' | 'done';
@@ -1219,7 +1220,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     flash('Listing withdrawn');
   }, [flash, logAudit, liveMode, rows, refreshListings]);
 
-  const restoreListing = useCallback((id: number) => {
+  const restoreListing = useCallback((id: number, price?: number | null) => {
+    if (price != null && (!Number.isFinite(price) || price < 0)) {
+      flash('Price must be a number of ₹0 or more.');
+      return;
+    }
     if (liveMode) {
       const target = rows.find((r) => r.id === id);
       if (!target?.backendId || target.status !== 'Withdrawn') {
@@ -1227,32 +1232,46 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const backendId = target.backendId;
+      // A price is only valid for SELL listings. Omitting it restores a SELL
+      // listing as N/A; BUY requirements always restore as Active.
+      const body = target.side === 'SELL' && price != null ? { price } : undefined;
       void (async () => {
         try {
-          await listingsApi.restore(backendId);
+          const restored = await listingsApi.restore(backendId, body);
           await refreshListings();
-          setRows((prev) => prev.map((row) => (row.backendId === backendId
-            ? { ...row, status: 'Active' as const, validUntil: 'restored by admin' }
-            : row)));
-          flash('Listing restored');
+          flash(restored.status === 'active'
+            ? 'Listing restored — visible to buyers'
+            : 'Listing restored as N/A — add a price to make it active');
         } catch (e) {
           flash(liveErr(e, 'Could not restore listing.'));
         }
       })();
       return;
     }
+    const target = rows.find((r) => r.id === id);
+    const nextStatus: ListingRow['status'] =
+      target?.side === 'BUY' || (price != null && price > 0) ? 'Active' : 'N/A';
     setRows((prev) => {
-      const target = prev.find((r) => r.id === id);
-      if (target) {
+      const row = prev.find((r) => r.id === id);
+      if (row) {
         logAudit({
           admin: 'Kunj Bihari', action: 'Restore listing',
-          entity: `${target.side === 'BUY' ? 'Requirement' : 'Listing'} · ${target.item}`,
-          before: target.status, after: 'Active',
+          entity: `${row.side === 'BUY' ? 'Requirement' : 'Listing'} · ${row.item}`,
+          before: row.status, after: nextStatus,
         });
       }
-      return prev.map((r) => (r.id === id ? { ...r, status: 'Active' as const, validUntil: 'restored by admin' } : r));
+      return prev.map((r) => (r.id === id
+        ? {
+            ...r,
+            status: nextStatus,
+            price: nextStatus === 'Active' ? (price ?? r.price) : null,
+            validUntil: nextStatus === 'Active' ? 'restored by admin' : 'N/A — add a price',
+          }
+        : r));
     });
-    flash('Listing restored');
+    flash(nextStatus === 'Active'
+      ? 'Listing restored — visible to buyers'
+      : 'Listing restored as N/A — add a price to make it active');
   }, [flash, logAudit, liveMode, rows, refreshListings]);
 
   const selectNego = useCallback((id: number) => setSelectedNegoId(id), []);
