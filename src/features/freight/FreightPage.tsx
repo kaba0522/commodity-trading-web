@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EmptyState, Field, Modal, Pagination } from '../../components/common/controls';
+import { EmptyState, ConfirmDialog, Field, Modal, Pagination } from '../../components/common/controls';
 import { FREIGHT_PAGE_SIZE, useAdmin } from '../../store/AdminContext';
 import { freightPrice } from '../../utils/format';
 
@@ -29,6 +29,7 @@ export function FreightPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ id: number; label: string } | null>(null);
 
   useEffect(() => {
     if (liveMode) void refreshFreight();
@@ -84,7 +85,7 @@ export function FreightPage() {
   const editRow = freightRoutes.find((r) => r.id === freightEditId) ?? null;
 
   const confirmRemove = (id: number, label: string) => {
-    if (window.confirm(`Remove route ${label}?`)) removeFreightRoute(id);
+    setRemoveTarget({ id, label });
   };
 
   return (
@@ -264,6 +265,19 @@ export function FreightPage() {
           {freightUploadLoading ? <div className="text-muted">Checking workbook…</div> : null}
           {freightUploadError ? <div className="field-error">{freightUploadError}</div> : null}
         </Modal>
+      ) : null}
+      {removeTarget ? (
+        <ConfirmDialog
+          title="Remove this freight route?"
+          message="The route will be removed for every user and can no longer be used for freight comparisons. This can't be undone."
+          detail={removeTarget.label}
+          confirmLabel="Remove route"
+          onClose={() => setRemoveTarget(null)}
+          onConfirm={() => {
+            removeFreightRoute(removeTarget.id);
+            setRemoveTarget(null);
+          }}
+        />
       ) : null}
     </>
   );

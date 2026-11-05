@@ -101,6 +101,73 @@ export function Modal({
   );
 }
 
+export function ConfirmDialog({
+  title,
+  message,
+  detail,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  onConfirm,
+  onClose,
+  busy = false,
+}: {
+  title: string;
+  message: string;
+  detail?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+  busy?: boolean;
+}) {
+  useEscape(() => { if (!busy) onClose(); });
+  return (
+    <div className="dialog-backdrop" onClick={busy ? undefined : onClose} role="presentation">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={title}
+        className="dialog-panel confirm-dialog"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="confirm-dialog-body">
+          <span className="confirm-dialog-icon" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              width={22}
+              height={22}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18" />
+              <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+            </svg>
+          </span>
+          <div style={{ minWidth: 0 }}>
+            <div className="confirm-dialog-title">{title}</div>
+            <div className="confirm-dialog-message">{message}</div>
+            {detail ? <div className="confirm-dialog-detail">{detail}</div> : null}
+          </div>
+        </div>
+        <div className="confirm-dialog-footer">
+          <button className="btn btn-secondary" onClick={onClose} disabled={busy} autoFocus>
+            {cancelLabel}
+          </button>
+          <button className="btn btn-danger" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function useEscape(onClose: () => void) {
   React.useEffect(() => {
     const fn = (e: KeyboardEvent) => {
