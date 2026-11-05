@@ -88,10 +88,6 @@ export function AdminLayout() {
   }, [page]);
 
   const handlePrimary = () => {
-    if (seg === 'commodities') {
-      document.getElementById('commodity-category-name')?.focus();
-      return;
-    }
     if (seg === 'brokers') {
       if (!liveMode) {
         flash('Connect to the live service before adding brokers.');

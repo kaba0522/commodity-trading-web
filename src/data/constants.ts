@@ -28,7 +28,7 @@ export const PAGES: Record<string, [title: string, subtitle: string, action: str
   trades: ['Trades & brokerage', 'Closed trades and what each broker earned', 'Log offline trade'],
   brokers: ['Brokers', 'Manage brokers and their commodity-level commission', 'Add broker'],
   settings: ['Settings', 'Platform-wide rules, expiry and terms', ''],
-  commodities: ['Commodity setup', 'Manage categories, commodities and qualities', 'Add category'],
+  commodities: ['Commodity setup', 'Manage categories, commodities and qualities', ''],
   audit: ['Audit log', 'Every admin action, attributable and reversible', 'Export log'],
   freight: ['Freight management', 'Origin → destination road-freight rates, per quintal', 'Upload freight sheet'],
 };
