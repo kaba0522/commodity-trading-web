@@ -84,6 +84,8 @@ interface AdminState {
   closeEdit: () => void;
   editPrice: string;
   setEditPrice: (v: string) => void;
+  editQuantity: string;
+  setEditQuantity: (v: string) => void;
   editWeight: string;
   setEditWeight: (v: string) => void;
   editReason: string;
@@ -349,6 +351,7 @@ function mapBackendListing(b: BackendListing, index: number, categoryName: (id: 
     quality: b.quality ?? '—',
     category: categoryName(b.categoryId),
     weight: b.weightKg != null ? `${b.weightKg}KG` : '—',
+    quantityBags: b.quantityBags,
     price: b.price,
     status: BACKEND_STATUS_LABEL[b.status] ?? 'Active',
     validUntil: adminExpired
@@ -442,6 +445,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [statusFilter, setStatusFilter] = useState('All statuses');
   const [editId, setEditId] = useState<number | null>(null);
   const [editPrice, setEditPrice] = useState('');
+  const [editQuantity, setEditQuantity] = useState('');
   const [editWeight, setEditWeight] = useState('');
   const [editReason, setEditReason] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -1007,7 +1011,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     const r = rows.find((x) => x.id === id);
     setEditId(id);
     setEditPrice(r && r.price != null ? String(r.price) : '');
-    setEditWeight(r ? r.weight : '');
+    setEditQuantity(r?.quantityBags == null ? '' : String(r.quantityBags));
+    setEditWeight(r && r.weight !== '—' ? r.weight : '');
     setEditReason('');
     setEditError(null);
   }, [rows]);
@@ -1020,44 +1025,55 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const saveEdit = useCallback(async () => {
     if (editId == null) return;
     if (liveMode) {
-      // PATCH /listings/:id is owner-only on the backend and price is sticky
-      // (never null). There is no admin edit-on-behalf endpoint, so a 403
-      // here is the backend's real answer — surfaced, not hidden.
       const target = rows.find((r) => r.id === editId);
       if (!target?.backendId) {
         setEditError('This row is stale — reload the list.');
         return;
       }
-      const price = Number(editPrice.trim());
-      if (editPrice.trim() === '' || !Number.isFinite(price) || price <= 0) {
-        setEditError('Enter a positive price — price cannot be cleared.');
-        return;
-      }
-      const patch: { price: number; weightKg?: number } = { price };
-      if (target.side === 'SELL' && editWeight.trim()) {
-        const kg = Number(editWeight.replace(/[^0-9]/g, ''));
-        if (!Number.isInteger(kg) || kg <= 0) {
-          setEditError('Weight must be a positive whole-kg number (e.g. 30KG).');
+      const patch: { price?: number; weightKg?: number; quantityBags?: number } = {};
+      if (editQuantity.trim()) {
+        const quantity = Number(editQuantity.trim());
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+          setEditError('Quantity must be a positive whole number of bags.');
           return;
         }
-        patch.weightKg = kg;
+        patch.quantityBags = quantity;
       }
-      if (!editReason.trim()) {
-        setEditError('Add a reason — it is written to the audit log.');
-        return;
+      if (target.side === 'BUY') {
+        const quantity = Number(editQuantity.trim());
+        if (!Number.isInteger(quantity) || quantity <= 0) {
+          setEditError('Quantity must be a positive whole number of bags.');
+          return;
+        }
+        patch.quantityBags = quantity;
+      } else {
+        if (editPrice.trim()) {
+          const price = Number(editPrice.trim());
+          if (!Number.isFinite(price) || price <= 0) {
+            setEditError('Enter a positive price — price cannot be cleared.');
+            return;
+          }
+          patch.price = price;
+        }
+        if (editWeight.trim()) {
+          const kg = Number(editWeight.replace(/[^0-9]/g, ''));
+          if (!Number.isInteger(kg) || kg <= 0) {
+            setEditError('Weight must be a positive whole-kg number (e.g. 30KG).');
+            return;
+          }
+          patch.weightKg = kg;
+        }
+        if (!Object.keys(patch).length) {
+          setEditError('Change at least one field before saving.');
+          return;
+        }
       }
       try {
         setEditError(null);
         await listingsApi.update(target.backendId, patch);
-        logAudit({
-          admin: 'Kunj Bihari', action: 'Edit on behalf',
-          entity: `${target.side === 'BUY' ? 'Requirement' : 'Listing'} · ${target.item}`,
-          before: target.price == null ? 'N/A' : `₹${target.price.toLocaleString('en-IN')}`,
-          after: `₹${price.toLocaleString('en-IN')}`,
-        });
         setEditId(null);
         setEditReason('');
-        flash('Changes saved');
+        flash('Changes saved and added to the audit log');
         await refreshListings();
       } catch (e) {
         setEditError(liveErr(e, 'Save failed.'));
@@ -1076,10 +1092,20 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setEditError('Add a reason — it is written to the audit log.');
       return;
     }
+    const quantity = editQuantity.trim() ? Number(editQuantity.trim()) : undefined;
+    if (quantity !== undefined && (!Number.isInteger(quantity) || quantity <= 0)) {
+      setEditError('Quantity must be a positive whole number of bags.');
+      return;
+    }
     const before = rows.find((r) => r.id === editId);
     setEditError(null);
     setRows((prev) => prev.map((r) => (r.id === editId
-      ? { ...r, price: editPrice.trim() === '' ? null : Number(editPrice), weight: editWeight.trim() }
+      ? {
+        ...r,
+        price: editPrice.trim() === '' ? null : Number(editPrice),
+        weight: editWeight.trim(),
+        ...(quantity !== undefined ? { quantityBags: quantity } : {}),
+      }
       : r)));
     if (before) {
       logAudit({
@@ -1092,7 +1118,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setEditId(null);
     setEditReason('');
     flash('Saved on behalf of the user — entry written to the audit log');
-  }, [editId, editPrice, editWeight, editReason, rows, flash, logAudit, liveMode, refreshListings]);
+  }, [editId, editPrice, editQuantity, editWeight, editReason, rows, flash, logAudit, liveMode, refreshListings]);
 
   const forceExpire = useCallback((id: number) => {
     if (liveMode) {
@@ -1726,7 +1752,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     },
     inviteError, sendInvite,
     rows, sideFilter, setSideFilter, catFilter, setCatFilter, statusFilter, setStatusFilter,
-    editId, openEdit, closeEdit, editPrice, setEditPrice, editWeight, setEditWeight,
+    editId, openEdit, closeEdit, editPrice, setEditPrice, editQuantity, setEditQuantity, editWeight, setEditWeight,
     editReason, setEditReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, setNegoFilter, selectedNegoId, selectNego,
     nudgeMessage, setNudgeMessage, relayPrice, setRelayPrice, relaySide, setRelaySide,
@@ -1781,7 +1807,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     usersLoading, usersError, refreshUsers,
     inviteePhone, inviteeFirm, inviteBuyer, inviteSeller, inviteError, sendInvite,
     rows, sideFilter, catFilter, statusFilter, editId, openEdit, closeEdit,
-    editPrice, editWeight, editReason, editError, saveEdit, forceExpire,
+    editPrice, editQuantity, editWeight, editReason, editError, saveEdit, forceExpire,
     negotiations, negoFilter, selectedNegoId, selectNego,
     nudgeMessage, relayPrice, relaySide, nudge, relay, trades, exportCsv, exportListingsWorkbook,
     brokers, brokersLoading, brokersError,

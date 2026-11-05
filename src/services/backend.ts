@@ -10,9 +10,6 @@
  *
  * Routes with NO backend endpoint remain unavailable rather than being
  * simulated (negotiations and trades).
- * The admin user directory has no dedicated route (GET /users is 404; only
- * /users/me exists), so it is assembled from the owners returned by the
- * admin listing feed — see userDirectoryApi below.
  */
 import { api, buildQuery } from './api';
 
@@ -120,10 +117,38 @@ export interface BackendListing {
   currency: string;
   status: BackendListingStatus;
   priceValidUntil: string | null;
-  paymentTerms: string | null;
+  paymentTerms: number | null;
   createdAt: string;
   user?: BackendListingUser;
 }
+
+export interface BackendListingOwner {
+  id: string;
+  name: string | null;
+  firmName: string | null;
+  phone: string;
+  roles: string[];
+  city: string | null;
+  status: 'active' | 'suspended' | 'deactivated';
+  defaultPaymentTerms: number | null;
+}
+
+export interface ListingOwnerFilters {
+  search?: string;
+  role?: 'buyer' | 'seller' | 'broker' | 'admin';
+  status?: BackendListingOwner['status'];
+  page?: number;
+  limit?: number;
+}
+
+export const listingOwnersApi = {
+  /** GET /users — admin picker for creating listings on behalf of an owner. */
+  list: (f: ListingOwnerFilters = {}) =>
+    api.getPage<BackendListingOwner[]>(`/users${buildQuery({
+      search: f.search, role: f.role, status: f.status,
+      page: f.page, limit: f.limit,
+    })}`),
+};
 
 export interface ListingFilters {
   side: BackendListingSide;
@@ -136,6 +161,7 @@ export interface ListingFilters {
 }
 
 interface ListingCreateBase {
+  ownerUserId?: string;
   categoryId: string;
   commodityId: string;
   qualityId: string;
@@ -178,6 +204,22 @@ export interface BulkConfirmListingsResult {
   failed: Array<{ rowIndex: number; reason: string }>;
 }
 
+export interface ListingUpdateBody {
+  categoryId?: string;
+  commodityId?: string;
+  qualityId?: string;
+  quantityBags?: number;
+  weightKg?: number;
+  price?: number;
+  paymentTerms?: number;
+  photoUrls?: string[];
+  videoUrls?: string[];
+  moisture?: string;
+  color?: string;
+  size?: string;
+  notes?: string;
+}
+
 export const listingsApi = {
   /**
    * GET /listings?side=&status=&... — admin sessions see every user's rows
@@ -192,19 +234,15 @@ export const listingsApi = {
   /** POST /listings — always submit the selected quality UUID, never its label. */
   create: (body: ListingCreateBody) =>
     api.post<BackendListing>('/listings', body),
-  /** POST /listings/bulk-confirm — each accepted row requires qualityId. */
-  bulkConfirm: (rows: BulkConfirmListingRow[]) =>
-    api.post<BulkConfirmListingsResult>('/listings/bulk-confirm', { rows }),
+  /** POST /listings/bulk-confirm — side and owner identify the bulk listing set. */
+  bulkConfirm: (rows: BulkConfirmListingRow[], side: BackendListingSide, ownerUserId: string) =>
+    api.post<BulkConfirmListingsResult>('/listings/bulk-confirm', { rows, side, ownerUserId }),
   /** GET /listings/:id */
   getById: (id: string) => api.get<BackendListing>(`/listings/${id}`),
-  /**
-   * PATCH /listings/:id — OWNER-ONLY on the backend (403 otherwise).
-   * There is no admin edit-on-behalf endpoint, so the UI surfaces the
-   * backend's 403 honestly when an admin tries it.
-   */
-  update: (id: string, patch: { price?: number | null; weightKg?: number | null }) =>
+  /** PATCH /listings/:id — admins may edit on behalf of the owner; edits are audited. */
+  update: (id: string, patch: ListingUpdateBody) =>
     api.patch<BackendListing>(`/listings/${id}`, patch),
-  /** PATCH /listings/:id/withdraw — owner-only, same caveat as update. */
+  /** PATCH /listings/:id/withdraw — owner-only. */
   withdraw: (id: string) =>
     api.patch<BackendListing>(`/listings/${id}/withdraw`, {}),
   /** PATCH /listings/:id/force-expire — admin only. */
@@ -212,7 +250,7 @@ export const listingsApi = {
     api.patch<BackendListing>(`/listings/${id}/force-expire`, {}),
 };
 
-/* ---------- admin user directory (derived from listings/auth) ---------- */
+/* ---------- listing activity directory (derived from listing owners) ---------- */
 
 export interface BackendDirectoryUser {
   id: string;
@@ -231,11 +269,8 @@ const DIRECTORY_PAGE_SIZE = 100;
 const DIRECTORY_STATUSES = 'active,price_expired,na,withdrawn,traded';
 
 /**
- * The backend exposes no admin "list users" route. The listing feed does
- * return each row's owner (`userId` + user.name/firmName/phone/roles) to
- * admin sessions, so the roster is the de-duplicated union of every sell
- * listing and buy requirement. Accounts that have never posted anything are
- * not discoverable this way — pending invites are merged in by the UI.
+ * Preserves listing activity data for the users screen. Listing creation
+ * uses listingOwnersApi instead, which includes active users with no listings.
  */
 export const userDirectoryApi = {
   list: async (): Promise<BackendDirectoryUser[]> => {

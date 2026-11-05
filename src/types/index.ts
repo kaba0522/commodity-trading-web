@@ -51,6 +51,7 @@ export interface ListingRow {
   quality: string;
   category: string;
   weight: string;
+  quantityBags?: number | null;
   price: number | null;
   status: 'Active' | 'Traded' | 'Price expired' | 'Withdrawn' | 'N/A';
   validUntil: string;
