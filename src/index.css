@@ -123,6 +123,10 @@ img { display: block; max-width: 100%; }
 .btn-secondary:active { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
 .btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); }
 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-sm { height: 28px; padding: 0 10px; font-size: 11.5px; }
+.btn-danger-ghost { color: #c0392b; }
+.btn-danger-ghost:hover { background: color-mix(in srgb, #d64545 10%, transparent); }
+.btn-danger-ghost:active { background: color-mix(in srgb, #d64545 18%, transparent); }
 .btn-block { width: 100%; margin-top: var(--space-2); }
 
 /* — forms — */
@@ -256,6 +260,73 @@ textarea.input { min-height: 90px; resize: vertical; border-radius: var(--radius
 .users-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; width: 100%; }
 .nego-split { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; align-items: start; }
 .settings-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+
+/* — commodity setup board (three balanced cards) — */
+.commodity-board {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.9fr) minmax(0, 1.05fr) minmax(0, 1.05fr);
+  gap: 18px;
+  align-items: stretch;
+}
+.commodity-board-solo { grid-template-columns: minmax(0, 760px); }
+.commodity-card { display: flex; flex-direction: column; min-width: 0; }
+.commodity-card-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  padding: 16px 18px 13px; border-bottom: 1px solid var(--color-neutral-200);
+}
+.commodity-card-heading { display: flex; align-items: flex-start; gap: 11px; min-width: 0; }
+.commodity-card-icon {
+  width: 34px; height: 34px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; background: var(--color-accent-100); color: var(--color-accent-700);
+}
+.commodity-card-title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 700; line-height: 1.3; }
+.commodity-card-sub {
+  margin: 2px 0 0; font-size: 11.5px; line-height: 1.4;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.commodity-loading {
+  flex: none; font-size: 11px; color: var(--color-neutral-600);
+  background: var(--color-neutral-100); border-radius: 999px; padding: 2px 9px;
+}
+.commodity-card-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 18px; flex: 1; }
+.commodity-card-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 348px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px;
+}
+.commodity-row {
+  display: flex; align-items: center; gap: 7px 8px; flex-wrap: wrap;
+  padding: 8px 10px; min-height: 38px;
+  background: var(--color-neutral-100);
+  border: 1px solid transparent; border-radius: 8px;
+}
+.commodity-row:hover { background: var(--color-surface); border-color: var(--color-neutral-300); }
+.commodity-row-select { cursor: pointer; }
+.commodity-row-select.is-selected { background: var(--color-accent-100); border-color: var(--color-accent-300); }
+.commodity-row-name {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+  overflow-wrap: anywhere;
+}
+.commodity-active-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent); flex: none; }
+.commodity-row-actions { display: flex; gap: 4px; flex: none; margin-left: auto; }
+.commodity-card-foot {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 13px 18px 16px; margin-top: auto;
+  border-top: 1px solid var(--color-neutral-200); background: var(--color-neutral-100);
+}
+.commodity-add-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--color-neutral-600);
+}
+.commodity-add-row { display: flex; gap: 8px; align-items: center; }
+.commodity-add-row .input { flex: 1; min-width: 0; height: 34px; }
+.commodity-add-row .btn { flex: none; height: 34px; padding: 0 14px; font-size: 12.5px; }
+.empty-note {
+  border: 1px dashed var(--color-neutral-300); border-radius: 8px;
+  padding: 14px 12px; font-size: 12px; color: var(--color-neutral-600); text-align: center;
+}
+.commodity-card .callout-info { font-size: 11.5px; }
 /* small reusable form grids */
 .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
@@ -296,6 +367,7 @@ textarea.input { min-height: 90px; resize: vertical; border-radius: var(--radius
   .users-split { grid-template-columns: minmax(0, 1fr); }
   .nego-split { grid-template-columns: minmax(0, 1fr); }
   .settings-split { grid-template-columns: minmax(0, 1fr); }
+  .commodity-board { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 760px) {

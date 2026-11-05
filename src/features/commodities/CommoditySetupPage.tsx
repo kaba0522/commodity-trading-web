@@ -1,6 +1,43 @@
 import { useEffect, useState } from 'react';
-import { Field, Pagination, usePagination } from '../../components/common/controls';
+import { Pagination, usePagination } from '../../components/common/controls';
 import { useAdmin } from '../../store/AdminContext';
+
+function CardIcon({ name }: { name: 'categories' | 'commodities' | 'qualities' }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {name === 'categories' ? (
+        <>
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </>
+      ) : name === 'commodities' ? (
+        <>
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+          <path d="m3.3 7 8.7 5 8.7-5" />
+          <path d="M12 22V12" />
+        </>
+      ) : (
+        <>
+          <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+          <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+          <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 export function CommoditySetupPage() {
   const {
@@ -26,6 +63,8 @@ export function CommoditySetupPage() {
     page: commodityPage, setPage: setCommodityPage,
     totalPages: commodityTotalPages, pageItems: commodityPageItems, total: commodityTotal,
   } = usePagination(liveCommodities, 10, categoryId);
+
+  const selectedCategory = liveCategories.find((category) => category.id === categoryId);
 
   useEffect(() => {
     if (!liveMode) return;
@@ -83,179 +122,232 @@ export function CommoditySetupPage() {
   };
 
   return (
-    <div className="settings-split">
-      <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>Categories</div>
-        <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
-          Organize the commodities and qualities available across the platform.
-          {liveMode ? ' Changes are saved to the live service.' : ' Categories are session-only in demo mode.'}
-        </p>
-        {categoryError ? <div className="field-error" role="alert">{categoryError}</div> : null}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-          {categoryPageItems.map((category) => (
-            <div key={category} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{category}</div>
-              {liveMode ? (
-                <>
-                  {liveCategories.find((item) => item.name === category)?.qualityCount === 0 ? (
-                    <span className="tag tag-accent-2" title="Add at least one quality before users can create listings in this category" style={{ fontSize: 10 }}>
-                      No qualities
-                    </span>
-                  ) : null}
-                  <button className="btn btn-primary" onClick={() => renameCategory(category)} style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}>
-                    Rename
-                  </button>
-                  <button
-                    className="btn btn-danger"
-                    onClick={() => {
-                      if (window.confirm(`Delete category “${category}”? Fails if items still reference it.`)) {
-                        deleteCategory(category);
-                      }
-                    }}
-                    style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
-                  >
-                    Delete
-                  </button>
-                </>
-              ) : null}
-            </div>
-          ))}
-          {categoryPageItems.length === 0 ? <div className="text-muted" style={{ fontSize: 12.5 }}>No categories yet.</div> : null}
-        </div>
-        {categoryTotalPages > 1 ? (
-          <Pagination page={categoryPage} totalPages={categoryTotalPages} total={categories.length} pageSize={10} onPageChange={setCategoryPage} />
-        ) : null}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input
-            id="commodity-category-name"
-            className="input"
-            placeholder="New category name"
-            value={newCategory}
-            onChange={(event) => setNewCategory(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Enter') addCategory(); }}
-            style={{ height: 34, maxWidth: 220, fontSize: 13 }}
-          />
-          <button className="btn btn-primary" onClick={addCategory} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
-            Add category
-          </button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {liveMode ? (
-          <>
-            <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>
-                Commodities {commoditiesLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
+    <div className={`commodity-board${liveMode ? '' : ' commodity-board-solo'}`}>
+      {/* — categories — */}
+      <section className="panel commodity-card" aria-labelledby="commodity-categories-title">
+        <div className="commodity-card-head">
+          <div className="commodity-card-heading">
+            <span className="commodity-card-icon"><CardIcon name="categories" /></span>
+            <div style={{ minWidth: 0 }}>
+              <div className="commodity-card-title" id="commodity-categories-title">
+                Categories <span className="tag tag-neutral">{categories.length}</span>
               </div>
-              <Field label="Category" required>
-                <select className="input" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={!liveCategories.length}>
-                  {liveCategories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.name}</option>
-                  ))}
-                </select>
-              </Field>
+              <p className="commodity-card-sub">Select a category to manage its items.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="commodity-card-body">
+          {categoryError ? <div className="field-error" role="alert">{categoryError}</div> : null}
+          <div className="commodity-card-list">
+            {categoryPageItems.map((category) => {
+              const meta = liveCategories.find((item) => item.name === category);
+              const isActive = Boolean(meta) && meta?.id === categoryId;
+              return (
+                <div
+                  key={category}
+                  role={meta ? 'button' : undefined}
+                  tabIndex={meta ? 0 : undefined}
+                  aria-pressed={meta ? isActive : undefined}
+                  className={`commodity-row${meta ? ' commodity-row-select' : ''}${isActive ? ' is-selected' : ''}`}
+                  onClick={() => { if (meta) setCategoryId(meta.id); }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if ((event.key === 'Enter' || event.key === ' ') && meta) {
+                      event.preventDefault();
+                      setCategoryId(meta.id);
+                    }
+                  }}
+                >
+                  <div className="commodity-row-name">
+                    {category}
+                    {liveMode && meta?.qualityCount === 0 ? (
+                      <span className="tag tag-accent-2" title="Add at least one quality before users can create listings in this category">
+                        No qualities
+                      </span>
+                    ) : null}
+                  </div>
+                  {isActive ? <span className="commodity-active-dot" aria-hidden="true" /> : null}
+                  {liveMode ? (
+                    <div className="commodity-row-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={(event) => { event.stopPropagation(); renameCategory(category); }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="btn btn-danger-ghost btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (window.confirm(`Delete category “${category}”? Fails if items still reference it.`)) {
+                            deleteCategory(category);
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+            {categoryPageItems.length === 0 ? (
+              <div className="empty-note">No categories yet. Add one below to get started.</div>
+            ) : null}
+          </div>
+          {categoryTotalPages > 1 ? (
+            <Pagination page={categoryPage} totalPages={categoryTotalPages} total={categories.length} pageSize={10} onPageChange={setCategoryPage} />
+          ) : null}
+        </div>
+
+        <div className="commodity-card-foot">
+          <label className="commodity-add-label" htmlFor="commodity-category-name">Add category</label>
+          <div className="commodity-add-row">
+            <input
+              id="commodity-category-name"
+              className="input"
+              placeholder="New category name"
+              value={newCategory}
+              onChange={(event) => setNewCategory(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') addCategory(); }}
+            />
+            <button className="btn btn-primary" onClick={addCategory}>Add</button>
+          </div>
+        </div>
+      </section>
+
+      {liveMode ? (
+        <>
+          {/* — commodities — */}
+          <section className="panel commodity-card" aria-labelledby="commodity-commodities-title">
+            <div className="commodity-card-head">
+              <div className="commodity-card-heading">
+                <span className="commodity-card-icon"><CardIcon name="commodities" /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="commodity-card-title" id="commodity-commodities-title">
+                    Commodities <span className="tag tag-neutral">{commodityTotal}</span>
+                  </div>
+                  <p className="commodity-card-sub">
+                    {selectedCategory ? `Products in ${selectedCategory.name}.` : 'Select a category to begin.'}
+                  </p>
+                </div>
+              </div>
+              {commoditiesLoading ? <span className="commodity-loading">Loading…</span> : null}
+            </div>
+
+            <div className="commodity-card-body">
               {commodityError ? <div className="field-error" role="alert">{commodityError}</div> : null}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div className="commodity-card-list">
                 {commodityPageItems.map((commodity) => (
-                  <div key={commodity.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
-                    <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{commodity.name}</div>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        const next = window.prompt('Rename commodity:', commodity.name);
-                        if (next?.trim() && next.trim() !== commodity.name) {
-                          void renameCommodity(commodity.id, next, categoryId).catch((error: unknown) => {
-                            flash(error instanceof Error ? error.message : 'Rename failed.');
-                          });
-                        }
-                      }}
-                      style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => {
-                        if (window.confirm(`Delete commodity “${commodity.name}”?`)) {
-                          void deleteCommodity(commodity.id, categoryId).catch((error: unknown) => {
-                            flash(error instanceof Error ? error.message : 'Delete failed.');
-                          });
-                        }
-                      }}
-                      style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
-                    >
-                      Delete
-                    </button>
+                  <div key={commodity.id} className="commodity-row">
+                    <div className="commodity-row-name">{commodity.name}</div>
+                    <div className="commodity-row-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          const next = window.prompt('Rename commodity:', commodity.name);
+                          if (next?.trim() && next.trim() !== commodity.name) {
+                            void renameCommodity(commodity.id, next, categoryId).catch((error: unknown) => {
+                              flash(error instanceof Error ? error.message : 'Rename failed.');
+                            });
+                          }
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="btn btn-danger-ghost btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete commodity “${commodity.name}”?`)) {
+                            void deleteCommodity(commodity.id, categoryId).catch((error: unknown) => {
+                              flash(error instanceof Error ? error.message : 'Delete failed.');
+                            });
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {liveCommodities.length === 0 && !commoditiesLoading ? (
-                  <div className="text-muted" style={{ fontSize: 12.5 }}>No commodities in this category yet.</div>
+                  <div className="empty-note">No commodities in this category yet.</div>
                 ) : null}
               </div>
               {commodityTotalPages > 1 ? (
                 <Pagination page={commodityPage} totalPages={commodityTotalPages} total={commodityTotal} pageSize={10} onPageChange={setCommodityPage} />
               ) : null}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            </div>
+
+            <div className="commodity-card-foot">
+              <label className="commodity-add-label" htmlFor="commodity-name">Add commodity</label>
+              <div className="commodity-add-row">
                 <input
+                  id="commodity-name"
                   className="input"
                   placeholder="New commodity name"
                   value={newCommodity}
                   onChange={(event) => { setNewCommodity(event.target.value); setCommodityFormError(null); }}
                   onKeyDown={(event) => { if (event.key === 'Enter') void submitCommodity(); }}
-                  style={{ height: 34, maxWidth: 220, fontSize: 13 }}
                   disabled={!categoryId}
                 />
-                <button className="btn btn-primary" onClick={() => void submitCommodity()} disabled={!categoryId} style={{ height: 34, padding: '0 14px', fontSize: 13 }}>
-                  Add commodity
-                </button>
+                <button className="btn btn-primary" onClick={() => void submitCommodity()} disabled={!categoryId}>Add</button>
               </div>
               {commodityFormError ? <div className="field-error" role="alert">{commodityFormError}</div> : null}
             </div>
+          </section>
 
-            <div className="panel panel-pad" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>
-                Qualities {qualitiesLoading ? <span className="text-muted" style={{ fontWeight: 400, fontSize: 12 }}>· loading…</span> : null}
+          {/* — qualities — */}
+          <section className="panel commodity-card" aria-labelledby="commodity-qualities-title">
+            <div className="commodity-card-head">
+              <div className="commodity-card-heading">
+                <span className="commodity-card-icon"><CardIcon name="qualities" /></span>
+                <div style={{ minWidth: 0 }}>
+                  <div className="commodity-card-title" id="commodity-qualities-title">
+                    Qualities <span className="tag tag-neutral">{liveQualities.length}</span>
+                  </div>
+                  <p className="commodity-card-sub">
+                    {selectedCategory ? `Grades available for ${selectedCategory.name}.` : 'Select a category to begin.'}
+                  </p>
+                </div>
               </div>
-              <Field label="Category" required>
-                <select className="input" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={!liveCategories.length}>
-                  {liveCategories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.name}</option>
-                  ))}
-                </select>
-              </Field>
+              {qualitiesLoading ? <span className="commodity-loading">Loading…</span> : null}
+            </div>
+
+            <div className="commodity-card-body">
               {qualitiesError ? <div className="field-error" role="alert">{qualitiesError}</div> : null}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div className="commodity-card-list">
                 {liveQualities.map((quality) => (
-                  <div key={quality.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: 'var(--color-neutral-100)', borderRadius: 8 }}>
-                    <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{quality.name}</div>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => {
-                        const next = window.prompt('Rename quality:', quality.name);
-                        if (next?.trim() && next.trim() !== quality.name) {
-                          void renameQuality(quality.id, next, categoryId).catch((error: unknown) => {
-                            setQualityFormError(error instanceof Error ? error.message : 'Rename failed.');
-                          });
-                        }
-                      }}
-                      style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
-                    >
-                      Rename
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => {
-                        if (window.confirm(`Delete quality “${quality.name}”? This fails if any listing uses it.`)) {
-                          void deleteQuality(quality.id, categoryId).catch((error: unknown) => {
-                            setQualityFormError(error instanceof Error ? error.message : 'Delete failed.');
-                          });
-                        }
-                      }}
-                      style={{ height: 28, padding: '0 10px', fontSize: 11.5 }}
-                    >
-                      Delete
-                    </button>
+                  <div key={quality.id} className="commodity-row">
+                    <div className="commodity-row-name">{quality.name}</div>
+                    <div className="commodity-row-actions">
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => {
+                          const next = window.prompt('Rename quality:', quality.name);
+                          if (next?.trim() && next.trim() !== quality.name) {
+                            void renameQuality(quality.id, next, categoryId).catch((error: unknown) => {
+                              setQualityFormError(error instanceof Error ? error.message : 'Rename failed.');
+                            });
+                          }
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        className="btn btn-danger-ghost btn-sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete quality “${quality.name}”? This fails if any listing uses it.`)) {
+                            void deleteQuality(quality.id, categoryId).catch((error: unknown) => {
+                              setQualityFormError(error instanceof Error ? error.message : 'Delete failed.');
+                            });
+                          }
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {liveQualities.length === 0 && !qualitiesLoading ? (
@@ -264,8 +356,13 @@ export function CommoditySetupPage() {
                   </div>
                 ) : null}
               </div>
-              <Field label="Add quality" required>
+            </div>
+
+            <div className="commodity-card-foot">
+              <label className="commodity-add-label" htmlFor="commodity-quality-name">Add quality</label>
+              <div className="commodity-add-row">
                 <input
+                  id="commodity-quality-name"
                   className="input"
                   placeholder="e.g. Sella"
                   value={newQuality}
@@ -273,19 +370,17 @@ export function CommoditySetupPage() {
                   onKeyDown={(event) => { if (event.key === 'Enter') void submitQuality(); }}
                   disabled={!categoryId}
                 />
-              </Field>
-              <button className="btn btn-primary" onClick={() => void submitQuality()} disabled={!categoryId || !newQuality.trim()}>
-                Add quality
-              </button>
+                <button className="btn btn-primary" onClick={() => void submitQuality()} disabled={!categoryId || !newQuality.trim()}>Add</button>
+              </div>
               {qualityFormError ? <div className="field-error" role="alert">{qualityFormError}</div> : null}
             </div>
-          </>
-        ) : (
-          <div className="callout-info">
-            Connect to the live service to manage commodities and qualities. Category management is available in demo mode.
-          </div>
-        )}
-      </div>
+          </section>
+        </>
+      ) : (
+        <div className="callout-info" style={{ gridColumn: '1 / -1' }}>
+          Connect to the live service to manage commodities and qualities. Category management is available in demo mode.
+        </div>
+      )}
     </div>
   );
 }
