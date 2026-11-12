@@ -90,6 +90,30 @@ function isConfirmable(row: BulkUploadRow, overrides: Record<number, RowTaxonomy
   return row.errors.every(isTaxonomyError);
 }
 
+/** Human-readable confirmation shown after a bulk import finishes. */
+function bulkImportMessage(result: BulkConfirmListingsResult, side: BackendListingSide) {
+  const added = result.created.length;
+  const updated = result.updated.length;
+  const failed = result.failed.length;
+  const noun = side === 'BUY' ? 'requirement' : 'listing';
+  const plural = (count: number) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+  if (added + updated === 0) {
+    return failed > 0
+      ? `Bulk upload could not import any rows — ${plural(failed)} failed.`
+      : 'Bulk upload finished — no rows were imported.';
+  }
+
+  const parts: string[] = [];
+  if (added) parts.push(`${plural(added)} added`);
+  if (updated) parts.push(`${plural(updated)} updated`);
+  if (failed) parts.push(`${plural(failed)} failed`);
+
+  return failed > 0
+    ? `Bulk upload finished — ${parts.join(' · ')}.`
+    : `Bulk upload successful — ${parts.join(' · ')}.`;
+}
+
 function rawValue(row: BulkUploadRow, key: string) {
   const value = row.raw[key];
   if (value === undefined || value === null || value === '') return '—';
@@ -630,9 +654,7 @@ export function BulkListingsPage() {
     try {
       const result = await listingsApi.bulkConfirm(rows, preview.side, preview.ownerUserId);
       setConfirmResult(result);
-      admin.flash(
-        `Bulk import: ${result.created.length} created · ${result.updated.length} updated · ${result.failed.length} failed.`,
-      );
+      admin.flash(bulkImportMessage(result, preview.side));
       await admin.refreshListings();
     } catch (error: unknown) {
       setConfirmError(errorMessage(error, 'Could not confirm these rows.'));
@@ -1086,6 +1108,9 @@ export function BulkListingsPage() {
               className="panel panel-pad"
               style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
             >
+              <div className="callout-info" role="status" style={{ fontWeight: 600 }}>
+                {bulkImportMessage(confirmResult, preview?.side ?? 'SELL')}
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700 }}>Import complete</div>
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
