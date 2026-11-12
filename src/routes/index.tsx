@@ -28,6 +28,9 @@ const UsersPage = lazy(() =>
 const ListingsPage = lazy(() =>
   import('../features/listings/ListingsPage').then((m) => ({ default: m.ListingsPage })),
 );
+const BulkListingsPage = lazy(() =>
+  import('../features/listings/BulkListingsPage').then((m) => ({ default: m.BulkListingsPage })),
+);
 const NegotiationsPage = lazy(() =>
   import('../features/negotiations/NegotiationsPage').then((m) => ({ default: m.NegotiationsPage })),
 );
@@ -90,6 +93,7 @@ export const router = createBrowserRouter(
             { path: 'dash', element: page(<DashboardPage />) },
             { path: 'users', element: page(<UsersPage />) },
             { path: 'listings', element: page(<ListingsPage />) },
+            { path: 'bulk-listings', element: page(<BulkListingsPage />) },
             { path: 'negotiations', element: page(<NegotiationsPage />) },
             { path: 'trades', element: page(<TradesPage />) },
             { path: 'settings', element: page(<SettingsPage />) },

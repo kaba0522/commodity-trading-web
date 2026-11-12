@@ -112,6 +112,48 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Fetches a binary response (e.g. the bulk-upload .xlsx template). Same auth +
+ * single-refresh behaviour as request(), but the body is returned as a Blob
+ * instead of being JSON-parsed.
+ */
+async function requestBlob(path: string, retry = true): Promise<Blob> {
+  if (!BASE_URL) {
+    throw new ApiError(0, 'NO_BACKEND', 'Backend not configured — set VITE_API_BASE_URL to enable live data.');
+  }
+  const token = loadSession()?.accessToken ?? null;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the backend. Is it running?');
+  }
+
+  if (res.status === 401) {
+    if (retry && loadSession()?.refreshToken) {
+      const next = await refreshAccessToken();
+      if (next) return requestBlob(path, false);
+    }
+    expireSession();
+    throw new ApiError(401, 'UNAUTHORIZED', 'Session expired — please sign in again.');
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    let body: unknown = null;
+    try {
+      body = text ? (JSON.parse(text) as unknown) : null;
+    } catch {
+      body = null;
+    }
+    const { code, message } = parseErrorBody(body, res.status);
+    throw new ApiError(res.status, code, message);
+  }
+  return res.blob();
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   if (!BASE_URL) {
     throw new ApiError(0, 'NO_BACKEND', 'Backend not configured — set VITE_API_BASE_URL to enable live data.');
@@ -193,6 +235,8 @@ export function buildQuery(params: Record<string, string | number | undefined>):
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestWithMeta<T>(path),
+  /** GET that returns a binary body (template workbooks). */
+  getBlob: (path: string) => requestBlob(path),
   post: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   postForm: <T>(path: string, body: FormData) =>

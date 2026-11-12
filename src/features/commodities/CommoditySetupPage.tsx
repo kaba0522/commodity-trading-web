@@ -50,6 +50,7 @@ export function CommoditySetupPage() {
   } = useAdmin();
 
   const [categoryId, setCategoryId] = useState('');
+  const [commodityId, setCommodityId] = useState('');
   const [newCommodity, setNewCommodity] = useState('');
   const [commodityFormError, setCommodityFormError] = useState<string | null>(null);
   const [newQuality, setNewQuality] = useState('');
@@ -65,6 +66,7 @@ export function CommoditySetupPage() {
   } = usePagination(liveCommodities, 10, categoryId);
 
   const selectedCategory = liveCategories.find((category) => category.id === categoryId);
+  const selectedCommodity = liveCommodities.find((commodity) => commodity.id === commodityId);
 
   useEffect(() => {
     if (!liveMode) return;
@@ -82,8 +84,18 @@ export function CommoditySetupPage() {
   useEffect(() => {
     if (!liveMode || !categoryId) return;
     void refreshCommodities(categoryId);
-    void refreshQualities(categoryId);
-  }, [liveMode, categoryId, refreshCommodities, refreshQualities]);
+  }, [liveMode, categoryId, refreshCommodities]);
+
+  useEffect(() => {
+    if (!liveMode || commoditiesLoading) return;
+    if (commodityId && liveCommodities.some((commodity) => commodity.id === commodityId)) return;
+    setCommodityId(liveCommodities[0]?.id ?? '');
+  }, [liveMode, commoditiesLoading, liveCommodities, commodityId]);
+
+  useEffect(() => {
+    if (!liveMode) return;
+    void refreshQualities(commodityId);
+  }, [liveMode, commodityId, refreshQualities]);
 
   const submitCommodity = async () => {
     if (!categoryId || !newCommodity.trim()) {
@@ -100,8 +112,8 @@ export function CommoditySetupPage() {
   };
 
   const submitQuality = async () => {
-    if (!categoryId) {
-      setQualityFormError('Pick a category first.');
+    if (!commodityId) {
+      setQualityFormError('Pick a commodity first.');
       return;
     }
     const name = newQuality.trim();
@@ -111,7 +123,8 @@ export function CommoditySetupPage() {
     }
     setQualityFormError(null);
     try {
-      const result = await addQualities(categoryId, [name]);
+      const result = await addQualities(commodityId, [name]);
+      await refreshCommodities(categoryId);
       setNewQuality('');
       if (result.skipped.length) {
         flash(`Created ${result.created.length}; already existed and skipped: ${result.skipped.join(', ')}`);
@@ -150,22 +163,23 @@ export function CommoditySetupPage() {
                   tabIndex={meta ? 0 : undefined}
                   aria-pressed={meta ? isActive : undefined}
                   className={`commodity-row${meta ? ' commodity-row-select' : ''}${isActive ? ' is-selected' : ''}`}
-                  onClick={() => { if (meta) setCategoryId(meta.id); }}
+                  onClick={() => {
+                    if (!meta || meta.id === categoryId) return;
+                    setCommodityId('');
+                    setCategoryId(meta.id);
+                  }}
                   onKeyDown={(event) => {
                     if (event.target !== event.currentTarget) return;
                     if ((event.key === 'Enter' || event.key === ' ') && meta) {
                       event.preventDefault();
+                      if (meta.id === categoryId) return;
+                      setCommodityId('');
                       setCategoryId(meta.id);
                     }
                   }}
                 >
                   <div className="commodity-row-name">
                     {category}
-                    {liveMode && meta?.qualityCount === 0 ? (
-                      <span className="tag tag-accent-2" title="Add at least one quality before users can create listings in this category">
-                        No qualities
-                      </span>
-                    ) : null}
                   </div>
                   {isActive ? <span className="commodity-active-dot" aria-hidden="true" /> : null}
                   {liveMode ? (
@@ -229,7 +243,9 @@ export function CommoditySetupPage() {
                     Commodities <span className="tag tag-neutral">{commodityTotal}</span>
                   </div>
                   <p className="commodity-card-sub">
-                    {selectedCategory ? `Products in ${selectedCategory.name}.` : 'Select a category to begin.'}
+                    {selectedCategory
+                      ? `Products in ${selectedCategory.name}. Select a commodity to manage its qualities.`
+                      : 'Select a category to begin.'}
                   </p>
                 </div>
               </div>
@@ -239,38 +255,65 @@ export function CommoditySetupPage() {
             <div className="commodity-card-body">
               {commodityError ? <div className="field-error" role="alert">{commodityError}</div> : null}
               <div className="commodity-card-list">
-                {commodityPageItems.map((commodity) => (
-                  <div key={commodity.id} className="commodity-row">
-                    <div className="commodity-row-name">{commodity.name}</div>
-                    <div className="commodity-row-actions">
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          const next = window.prompt('Rename commodity:', commodity.name);
-                          if (next?.trim() && next.trim() !== commodity.name) {
-                            void renameCommodity(commodity.id, next, categoryId).catch((error: unknown) => {
-                              flash(error instanceof Error ? error.message : 'Rename failed.');
-                            });
-                          }
-                        }}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        className="btn btn-danger-ghost btn-sm"
-                        onClick={() => {
-                          if (window.confirm(`Delete commodity “${commodity.name}”?`)) {
-                            void deleteCommodity(commodity.id, categoryId).catch((error: unknown) => {
-                              flash(error instanceof Error ? error.message : 'Delete failed.');
-                            });
-                          }
-                        }}
-                      >
-                        Delete
-                      </button>
+                {commodityPageItems.map((commodity) => {
+                  const isActive = commodity.id === commodityId;
+                  return (
+                    <div
+                      key={commodity.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isActive}
+                      className={`commodity-row commodity-row-select${isActive ? ' is-selected' : ''}`}
+                      onClick={() => setCommodityId(commodity.id)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setCommodityId(commodity.id);
+                        }
+                      }}
+                    >
+                      <div className="commodity-row-name">
+                        {commodity.name}
+                        {commodity.qualityCount === 0 ? (
+                          <span className="tag tag-accent-2" title="Add at least one quality before users can create listings for this commodity">
+                            No qualities
+                          </span>
+                        ) : null}
+                      </div>
+                      {isActive ? <span className="commodity-active-dot" aria-hidden="true" /> : null}
+                      <div className="commodity-row-actions">
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const next = window.prompt('Rename commodity:', commodity.name);
+                            if (next?.trim() && next.trim() !== commodity.name) {
+                              void renameCommodity(commodity.id, next, categoryId).catch((error: unknown) => {
+                                flash(error instanceof Error ? error.message : 'Rename failed.');
+                              });
+                            }
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          className="btn btn-danger-ghost btn-sm"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (window.confirm(`Delete commodity “${commodity.name}”?`)) {
+                              void deleteCommodity(commodity.id, categoryId).catch((error: unknown) => {
+                                flash(error instanceof Error ? error.message : 'Delete failed.');
+                              });
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {liveCommodities.length === 0 && !commoditiesLoading ? (
                   <div className="empty-note">No commodities in this category yet.</div>
                 ) : null}
@@ -308,7 +351,7 @@ export function CommoditySetupPage() {
                     Qualities <span className="tag tag-neutral">{liveQualities.length}</span>
                   </div>
                   <p className="commodity-card-sub">
-                    {selectedCategory ? `Grades available for ${selectedCategory.name}.` : 'Select a category to begin.'}
+                    {selectedCommodity ? `Grades available for ${selectedCommodity.name}.` : 'Select a commodity to begin.'}
                   </p>
                 </div>
               </div>
@@ -327,9 +370,11 @@ export function CommoditySetupPage() {
                         onClick={() => {
                           const next = window.prompt('Rename quality:', quality.name);
                           if (next?.trim() && next.trim() !== quality.name) {
-                            void renameQuality(quality.id, next, categoryId).catch((error: unknown) => {
-                              setQualityFormError(error instanceof Error ? error.message : 'Rename failed.');
-                            });
+                            void renameQuality(quality.id, next, commodityId)
+                              .then(() => refreshCommodities(categoryId))
+                              .catch((error: unknown) => {
+                                setQualityFormError(error instanceof Error ? error.message : 'Rename failed.');
+                              });
                           }
                         }}
                       >
@@ -339,9 +384,11 @@ export function CommoditySetupPage() {
                         className="btn btn-danger-ghost btn-sm"
                         onClick={() => {
                           if (window.confirm(`Delete quality “${quality.name}”? This fails if any listing uses it.`)) {
-                            void deleteQuality(quality.id, categoryId).catch((error: unknown) => {
-                              setQualityFormError(error instanceof Error ? error.message : 'Delete failed.');
-                            });
+                            void deleteQuality(quality.id, commodityId)
+                              .then(() => refreshCommodities(categoryId))
+                              .catch((error: unknown) => {
+                                setQualityFormError(error instanceof Error ? error.message : 'Delete failed.');
+                              });
                           }
                         }}
                       >
@@ -352,7 +399,9 @@ export function CommoditySetupPage() {
                 ))}
                 {liveQualities.length === 0 && !qualitiesLoading ? (
                   <div className="callout-info">
-                    No qualities in this category. Users cannot create listings in it until an admin adds a quality.
+                    {selectedCommodity
+                      ? `No qualities for ${selectedCommodity.name}. Users cannot create listings for it until an admin adds a quality.`
+                      : 'Select a commodity to manage its qualities.'}
                   </div>
                 ) : null}
               </div>
@@ -364,13 +413,13 @@ export function CommoditySetupPage() {
                 <input
                   id="commodity-quality-name"
                   className="input"
-                  placeholder="e.g. Sella"
+                  placeholder={selectedCommodity ? `New quality for ${selectedCommodity.name}` : 'Select a commodity first'}
                   value={newQuality}
                   onChange={(event) => { setNewQuality(event.target.value); setQualityFormError(null); }}
                   onKeyDown={(event) => { if (event.key === 'Enter') void submitQuality(); }}
-                  disabled={!categoryId}
+                  disabled={!commodityId}
                 />
-                <button className="btn btn-primary" onClick={() => void submitQuality()} disabled={!categoryId || !newQuality.trim()}>Add</button>
+                <button className="btn btn-primary" onClick={() => void submitQuality()} disabled={!commodityId || !newQuality.trim()}>Add</button>
               </div>
               {qualityFormError ? <div className="field-error" role="alert">{qualityFormError}</div> : null}
             </div>

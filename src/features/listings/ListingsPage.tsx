@@ -51,7 +51,8 @@ export function ListingsPage() {
   const [createCategoryId, setCreateCategoryId] = useState('');
   const [createCommodities, setCreateCommodities] = useState<BackendCommodity[]>([]);
   const [createQualities, setCreateQualities] = useState<BackendQuality[]>([]);
-  const [createTaxonomyLoading, setCreateTaxonomyLoading] = useState(false);
+  const [createCommoditiesLoading, setCreateCommoditiesLoading] = useState(false);
+  const [createQualitiesLoading, setCreateQualitiesLoading] = useState(false);
   const [createCommodityId, setCreateCommodityId] = useState('');
   const [createQualityId, setCreateQualityId] = useState('');
   const [createQuantity, setCreateQuantity] = useState('');
@@ -129,37 +130,54 @@ export function ListingsPage() {
   useEffect(() => {
     if (!createOpen || !liveMode || !createCategoryId) {
       setCreateCommodities([]);
-      setCreateQualities([]);
       setCreateCommodityId('');
-      setCreateQualityId('');
-      setCreateTaxonomyLoading(false);
+      setCreateCommoditiesLoading(false);
       return;
     }
     let active = true;
     setCreateCommodities([]);
-    setCreateQualities([]);
     setCreateCommodityId('');
-    setCreateQualityId('');
-    setCreateTaxonomyLoading(true);
-    void Promise.all([
-      loadAllPages((page) => commoditiesApi.list({ categoryId: createCategoryId, page, limit: 100 })),
-      loadAllPages((page) => qualitiesApi.list({ categoryId: createCategoryId, page, limit: 100 })),
-    ])
-      .then(([commodities, qualities]) => {
+    setCreateCommoditiesLoading(true);
+    void loadAllPages((page) => commoditiesApi.list({ categoryId: createCategoryId, page, limit: 100 }))
+      .then((commodities) => {
         if (!active) return;
         setCreateCommodities(commodities);
-        setCreateQualities(qualities);
         setCreateCommodityId(commodities[0]?.id ?? '');
-        setCreateQualityId(qualities[0]?.id ?? '');
       })
       .catch((error: unknown) => {
-        if (active) setCreateError(error instanceof ApiError ? error.message : 'Could not load category options.');
+        if (active) setCreateError(error instanceof ApiError ? error.message : 'Could not load commodities.');
       })
       .finally(() => {
-        if (active) setCreateTaxonomyLoading(false);
+        if (active) setCreateCommoditiesLoading(false);
       });
     return () => { active = false; };
   }, [createOpen, liveMode, createCategoryId]);
+
+  useEffect(() => {
+    if (!createOpen || !liveMode || !createCommodityId) {
+      setCreateQualities([]);
+      setCreateQualityId('');
+      setCreateQualitiesLoading(false);
+      return;
+    }
+    let active = true;
+    setCreateQualities([]);
+    setCreateQualityId('');
+    setCreateQualitiesLoading(true);
+    void loadAllPages((page) => qualitiesApi.list({ commodityId: createCommodityId, page, limit: 100 }))
+      .then((qualities) => {
+        if (!active) return;
+        setCreateQualities(qualities);
+        setCreateQualityId(qualities[0]?.id ?? '');
+      })
+      .catch((error: unknown) => {
+        if (active) setCreateError(error instanceof ApiError ? error.message : 'Could not load qualities.');
+      })
+      .finally(() => {
+        if (active) setCreateQualitiesLoading(false);
+      });
+    return () => { active = false; };
+  }, [createOpen, liveMode, createCommodityId]);
 
   useEffect(() => {
     if (!createOpen || !liveMode) {
@@ -607,8 +625,8 @@ export function ListingsPage() {
               >
                 <option value="">{createCategoriesLoading ? 'Loading categories…' : 'Choose a category'}</option>
                 {createCategories.map((category) => (
-                  <option key={category.id} value={category.id} disabled={category.qualityCount === 0}>
-                    {category.name}{category.qualityCount === 0 ? ' · no qualities' : ''}
+                  <option key={category.id} value={category.id} disabled={category.commodityCount === 0}>
+                    {category.name}{category.commodityCount === 0 ? ' · no commodities' : ''}
                   </option>
                 ))}
               </select>
@@ -617,12 +635,17 @@ export function ListingsPage() {
               <select
                 className="input"
                 value={createCommodityId}
-                disabled={createTaxonomyLoading || !createCommodities.length}
-                onChange={(event) => setCreateCommodityId(event.target.value)}
+                disabled={createCommoditiesLoading || !createCommodities.length}
+                onChange={(event) => {
+                  setCreateCommodityId(event.target.value);
+                  setCreateQualityId('');
+                }}
               >
-                <option value="">{createTaxonomyLoading ? 'Loading…' : 'Choose a commodity'}</option>
+                <option value="">{createCommoditiesLoading ? 'Loading…' : 'Choose a commodity'}</option>
                 {createCommodities.map((commodity) => (
-                  <option key={commodity.id} value={commodity.id}>{commodity.name}</option>
+                  <option key={commodity.id} value={commodity.id} disabled={commodity.qualityCount === 0}>
+                    {commodity.name}{commodity.qualityCount === 0 ? ' · no qualities' : ''}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -632,10 +655,16 @@ export function ListingsPage() {
               <select
                 className="input"
                 value={createQualityId}
-                disabled={createTaxonomyLoading || !createQualities.length}
+                disabled={createQualitiesLoading || !createCommodityId || !createQualities.length}
                 onChange={(event) => setCreateQualityId(event.target.value)}
               >
-                <option value="">{createTaxonomyLoading ? 'Loading…' : 'Choose a quality'}</option>
+                <option value="">
+                  {!createCommodityId
+                    ? 'Choose a commodity first'
+                    : createQualitiesLoading
+                      ? 'Loading…'
+                      : 'Choose a quality'}
+                </option>
                 {createQualities.map((quality) => (
                   <option key={quality.id} value={quality.id}>{quality.name}</option>
                 ))}

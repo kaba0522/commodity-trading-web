@@ -261,10 +261,10 @@ interface AdminState {
   liveQualities: BackendQuality[];
   qualitiesLoading: boolean;
   qualitiesError: string | null;
-  refreshQualities: (categoryId: string) => Promise<void>;
-  addQualities: (categoryId: string, names: string[]) => Promise<QualityBulkCreateResult>;
-  renameQuality: (id: string, name: string, categoryId: string) => Promise<void>;
-  deleteQuality: (id: string, categoryId: string) => Promise<void>;
+  refreshQualities: (commodityId: string) => Promise<void>;
+  addQualities: (commodityId: string, names: string[]) => Promise<QualityBulkCreateResult>;
+  renameQuality: (id: string, name: string, commodityId: string) => Promise<void>;
+  deleteQuality: (id: string, commodityId: string) => Promise<void>;
   tosVersions: TosVersion[];
   tosVersionsLoading: boolean;
   tosVersionsError: string | null;
@@ -840,13 +840,19 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, [liveMode]);
 
-  const refreshQualities = useCallback(async (categoryId: string) => {
+  const refreshQualities = useCallback(async (commodityId: string) => {
     if (!liveMode) return;
+    if (!commodityId) {
+      setLiveQualities([]);
+      setQualitiesError(null);
+      setQualitiesLoading(false);
+      return;
+    }
     setQualitiesLoading(true);
     setQualitiesError(null);
     setLiveQualities([]);
     try {
-      const { data } = await qualitiesApi.list({ categoryId, limit: 100 });
+      const { data } = await qualitiesApi.list({ commodityId, limit: 100 });
       setLiveQualities(data);
     } catch (e) {
       setLiveQualities([]);
@@ -856,22 +862,22 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   }, [liveMode]);
 
-  const addQualities = useCallback(async (categoryId: string, names: string[]) => {
-    const result = await qualitiesApi.createMany(categoryId, names);
-    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+  const addQualities = useCallback(async (commodityId: string, names: string[]) => {
+    const result = await qualitiesApi.createMany(commodityId, names);
+    await Promise.all([refreshQualities(commodityId), refreshCategories()]);
     flash(`Added ${result.created.length} quality entries; skipped ${result.skipped.length} existing`);
     return result;
   }, [refreshQualities, refreshCategories, flash]);
 
-  const renameQuality = useCallback(async (id: string, name: string, categoryId: string) => {
+  const renameQuality = useCallback(async (id: string, name: string, commodityId: string) => {
     await qualitiesApi.rename(id, name.trim());
-    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+    await Promise.all([refreshQualities(commodityId), refreshCategories()]);
     flash('Quality renamed');
   }, [refreshQualities, refreshCategories, flash]);
 
-  const deleteQuality = useCallback(async (id: string, categoryId: string) => {
+  const deleteQuality = useCallback(async (id: string, commodityId: string) => {
     await qualitiesApi.remove(id);
-    await Promise.all([refreshQualities(categoryId), refreshCategories()]);
+    await Promise.all([refreshQualities(commodityId), refreshCategories()]);
     flash('Quality deleted');
   }, [refreshQualities, refreshCategories, flash]);
 

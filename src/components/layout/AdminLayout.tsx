@@ -6,7 +6,7 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 
 const PATH_TO_SCREEN: Record<string, string> = {
-  dash: 'dash', users: 'users', listings: 'listings', negotiations: 'negotiations',
+  dash: 'dash', users: 'users', listings: 'listings', 'bulk-listings': 'bulk-listings', negotiations: 'negotiations',
   trades: 'trades', settings: 'settings', commodities: 'commodities', audit: 'audit', freight: 'freight', brokers: 'brokers',
 };
 

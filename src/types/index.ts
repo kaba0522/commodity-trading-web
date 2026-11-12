@@ -4,6 +4,7 @@ export type ScreenKey =
   | 'dash'
   | 'users'
   | 'listings'
+  | 'bulk-listings'
   | 'negotiations'
   | 'trades'
   | 'settings'

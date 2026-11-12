@@ -204,6 +204,56 @@ export interface BulkConfirmListingsResult {
   failed: Array<{ rowIndex: number; reason: string }>;
 }
 
+/** How a sheet cell was matched to the live taxonomy. */
+export type BulkNameMatch = 'exact' | 'fuzzy' | 'unresolved';
+
+export interface BulkNameSuggestion {
+  id: string;
+  name: string;
+  similarity: number;
+}
+
+export interface BulkUploadResolved {
+  categoryId: string | null;
+  categoryMatch: BulkNameMatch;
+  categorySuggestion: BulkNameSuggestion | null;
+  commodityId: string | null;
+  commodityMatch: BulkNameMatch;
+  commoditySuggestion: BulkNameSuggestion | null;
+  itemName: string | null;
+  qualityId: string | null;
+  qualityMatch: BulkNameMatch;
+  qualitySuggestion: BulkNameSuggestion | null;
+  quality: string | null;
+  quantityBags: number | null;
+  // SELL-only fields; absent on a BUY preview row.
+  weightKg?: number | null;
+  price?: number | null;
+  paymentTerms?: number | null;
+  paymentTermsSource?: 'row' | 'existing_listing' | 'profile_default' | null;
+  notes?: string | null;
+  moisture?: string | null;
+  color?: string | null;
+  size?: string | null;
+}
+
+export interface BulkUploadRow {
+  rowIndex: number;
+  raw: Record<string, unknown>;
+  resolved: BulkUploadResolved;
+  /** Id of the live listing/requirement this row would update, if any. */
+  willUpdateExisting: string | null;
+  errors: string[];
+  ready: boolean;
+}
+
+export interface BulkUploadResult {
+  side: BackendListingSide;
+  ownerUserId: string;
+  summary: { totalRows: number; readyRows: number; needsReviewRows: number };
+  rows: BulkUploadRow[];
+}
+
 export interface ListingUpdateBody {
   categoryId?: string;
   commodityId?: string;
@@ -234,9 +284,37 @@ export const listingsApi = {
   /** POST /listings — always submit the selected quality UUID, never its label. */
   create: (body: ListingCreateBody) =>
     api.post<BackendListing>('/listings', body),
-  /** POST /listings/bulk-confirm — side and owner identify the bulk listing set. */
-  bulkConfirm: (rows: BulkConfirmListingRow[], side: BackendListingSide, ownerUserId: string) =>
-    api.post<BulkConfirmListingsResult>('/listings/bulk-confirm', { rows, side, ownerUserId }),
+  /**
+   * GET /listings/template?side= — binary .xlsx workbook with live-taxonomy
+   * dropdowns. SELL (default) has 11 columns; BUY has 4.
+   */
+  downloadTemplate: (side: BackendListingSide) =>
+    api.getBlob(`/listings/template${buildQuery({ side })}`),
+  /**
+   * POST /listings/bulk-upload — multipart parse/preview only. Nothing is
+   * written; the response's `side` + `ownerUserId` must be sent to bulk-confirm.
+   */
+  bulkUpload: (file: File, side: BackendListingSide, ownerUserId?: string) => {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('side', side);
+    if (ownerUserId) body.append('ownerUserId', ownerUserId);
+    return api.postForm<BulkUploadResult>('/listings/bulk-upload', body);
+  },
+  /**
+   * POST /listings/bulk-confirm — commits previewed rows. side defaults to SELL;
+   * ownerUserId is required for an admin and omitted for a seller's own sheet.
+   */
+  bulkConfirm: (
+    rows: BulkConfirmListingRow[],
+    side: BackendListingSide = 'SELL',
+    ownerUserId?: string,
+  ) =>
+    api.post<BulkConfirmListingsResult>('/listings/bulk-confirm', {
+      rows,
+      side,
+      ...(ownerUserId ? { ownerUserId } : {}),
+    }),
   /** GET /listings/:id */
   getById: (id: string) => api.get<BackendListing>(`/listings/${id}`),
   /** PATCH /listings/:id — admins may edit on behalf of the owner; edits are audited. */
@@ -452,7 +530,8 @@ export const settingsApi = {
 export interface BackendCategory {
   id: string;
   name: string;
-  qualityCount?: number;
+  commodityCount?: number;
+  commoditiesWithoutQualities?: number;
   createdAt?: string;
 }
 
@@ -484,6 +563,7 @@ export interface BackendCommodity {
   id: string;
   categoryId: string;
   name: string;
+  qualityCount?: number;
   createdAt?: string;
   category?: { name: string };
 }
@@ -515,10 +595,14 @@ export const commoditiesApi = {
 
 export interface BackendQuality {
   id: string;
-  categoryId: string;
+  commodityId: string;
   name: string;
   createdAt: string;
-  category?: { name: string };
+  commodity?: {
+    name: string;
+    categoryId: string;
+    category?: { name: string };
+  };
 }
 
 export interface QualityBulkCreateResult {
@@ -527,24 +611,24 @@ export interface QualityBulkCreateResult {
 }
 
 export interface QualityFilters {
-  categoryId?: string;
+  commodityId?: string;
   name?: string;
   page?: number;
   limit?: number;
 }
 
 export const qualitiesApi = {
-  /** GET /qualities?categoryId=&name=&page=&limit= */
+  /** GET /qualities?commodityId=&name=&page=&limit= */
   list: (f: QualityFilters = {}) =>
     api.getPage<BackendQuality[]>(`/qualities${buildQuery({
-      categoryId: f.categoryId, name: f.name, page: f.page, limit: f.limit ?? 20,
+      commodityId: f.commodityId, name: f.name, page: f.page, limit: f.limit ?? 20,
     })}`),
-  /** POST /qualities { categoryId, name } — admin only. */
-  create: (categoryId: string, name: string) =>
-    api.post<BackendQuality>('/qualities', { categoryId, name }),
-  /** POST /qualities { categoryId, names } — admin only, idempotent bulk create. */
-  createMany: (categoryId: string, names: string[]) =>
-    api.post<QualityBulkCreateResult>('/qualities', { categoryId, names }),
+  /** POST /qualities { commodityId, name } — admin only. */
+  create: (commodityId: string, name: string) =>
+    api.post<BackendQuality>('/qualities', { commodityId, name }),
+  /** POST /qualities { commodityId, names } — admin only, idempotent bulk create. */
+  createMany: (commodityId: string, names: string[]) =>
+    api.post<QualityBulkCreateResult>('/qualities', { commodityId, names }),
   /** PATCH /qualities/:id { name } — admin only. */
   rename: (id: string, name: string) =>
     api.patch<BackendQuality>(`/qualities/${id}`, { name }),
