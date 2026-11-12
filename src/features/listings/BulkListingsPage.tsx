@@ -1448,7 +1448,7 @@ export function BulkListingsPage() {
               }}>
                 <span className="text-muted" style={{ fontSize: 12 }}>
                   {selectedCount} of {readyCount} importable rows selected.
-                  {' '}Rows that already exist with the same category, commodity, weight, and quality are updated.
+                  {' '}Rows
                 </span>
                 <button
                   className="btn btn-primary"
