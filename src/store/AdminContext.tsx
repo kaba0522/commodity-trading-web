@@ -1443,19 +1443,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setBrokerAddError('Enter a valid 10-digit mobile number.');
       return;
     }
-    const hasType = brokerAddCommissionType.trim() !== '';
-    const hasRate = brokerAddCommissionRate.trim() !== '';
-    if (hasType !== hasRate) {
-      setBrokerAddError('commissionType and commissionRate must be provided together');
-      return;
-    }
     setBrokerAddSaving(true);
     try {
       const created = await brokersApi.create({
         name: brokerAddName.trim(),
         phone: brokerAddPhone.trim(),
-        commissionType: hasType ? (brokerAddCommissionType as Broker['commissionType']) : null,
-        commissionRate: hasRate ? Number(brokerAddCommissionRate) : null,
       });
       setBrokerAddOpen(false);
       setBrokerAddName('');
@@ -1471,7 +1463,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBrokerAddSaving(false);
     }
-  }, [brokerAddName, brokerAddPhone, brokerAddCommissionType, brokerAddCommissionRate, brokerPage, flash, refreshBrokers]);
+   }, [brokerAddName, brokerAddPhone, brokerPage, flash, refreshBrokers]);
 
   const openBrokerEdit = useCallback((id: string) => {
     const b = brokers.find((x) => x.id === id);
@@ -1496,25 +1488,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       setBrokerEditError('Enter a valid 10-digit mobile number.');
       return;
     }
-    const hasType = brokerEditCommissionType.trim() !== '';
-    const hasRate = brokerEditCommissionRate.trim() !== '';
-    if (hasType !== hasRate) {
-      setBrokerEditError('commissionType and commissionRate must be provided together');
-      return;
-    }
     setBrokerEditSaving(true);
     try {
       const patch: Parameters<typeof brokersApi.update>[1] = {};
       if (brokerEditName.trim()) patch.name = brokerEditName.trim();
       if (brokerEditPhone.trim()) patch.phone = normalizePhone(brokerEditPhone);
-      if (hasType) {
-        patch.commissionType = brokerEditCommissionType as Broker['commissionType'];
-        patch.commissionRate = Number(brokerEditCommissionRate);
-      } else if (!hasType && !hasRate) {
-        // Both blank = clear the commission
-        patch.commissionType = null;
-        patch.commissionRate = null;
-      }
       await brokersApi.update(brokerEditId, patch);
       setBrokerEditId(null);
       flash('Broker updated');
@@ -1524,7 +1502,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setBrokerEditSaving(false);
     }
-  }, [brokerEditId, brokerEditName, brokerEditPhone, brokerEditCommissionType, brokerEditCommissionRate, flash, refreshBrokers]);
+   }, [brokerEditId, brokerEditName, brokerEditPhone, flash, refreshBrokers]);
 
   const deactivateBroker = useCallback(async (id: string) => {
     try {

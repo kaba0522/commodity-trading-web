@@ -5,12 +5,6 @@ import { brokersApi, commoditiesApi, type BackendBroker, type BackendCommodity }
 import { useAdmin } from '../../store/AdminContext';
 import type { Broker } from '../../types';
 
-function commissionDisplay(b: Broker): string {
-  if (!b.commissionType || b.commissionRate == null) return '—';
-  if (b.commissionType === 'percent') return `${b.commissionRate}% of trade`;
-  if (b.commissionType === 'per_bag') return `₹${b.commissionRate} per bag`;
-  return `₹${b.commissionRate} flat`;
-}
 
 function formatPhone(phone: string): string {
   // +91XXXXXXXXXX → +91 XXXXX XXXXX
@@ -32,8 +26,6 @@ export function BrokersPage() {
     brokerAddError, brokerAddSaving, submitBrokerAdd,
     brokerEditId, openBrokerEdit, closeBrokerEdit,
     brokerEditName, setBrokerEditName, brokerEditPhone, setBrokerEditPhone,
-    brokerEditCommissionType, setBrokerEditCommissionType,
-    brokerEditCommissionRate, setBrokerEditCommissionRate,
     brokerEditError, brokerEditSaving, submitBrokerEdit,
     deactivateBroker, reactivateBroker,
     liveMode,
@@ -216,7 +208,7 @@ export function BrokersPage() {
                 <span style={{ display: 'block', minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.name}</span>
                   <span className="text-muted" style={{ display: 'block', fontSize: 11.5, marginTop: 2 }}>
-                    {formatPhone(b.phone)} · {commissionDisplay(b) === '—' ? 'No commission set' : commissionDisplay(b)}
+                    {formatPhone(b.phone)}
                   </span>
                 </span>
                 <span className={`tag ${b.active ? 'tag-accent' : 'tag-neutral'}`} style={{ fontSize: 10, padding: '2px 8px' }}>
@@ -344,16 +336,7 @@ export function BrokersPage() {
               <p className="text-muted" style={{ fontSize: 11.5, lineHeight: 1.5, marginBottom: 14 }}>
                 Set a commission rate per commodity — either a percentage of trade value or a fixed amount per bag.
               </p>
-              {selectedBroker.commissionType && selectedBroker.commissionRate != null ? (
-                <div style={{ padding: 12, borderRadius: 8, background: 'var(--color-surface)', marginBottom: 14 }}>
-                  <div style={{ fontWeight: 600, fontSize: 12 }}>Broker default commission</div>
-                  <div className="text-muted" style={{ fontSize: 11.5, marginTop: 3 }}>{commissionDisplay(selectedBroker)}</div>
-                  <div className="text-muted" style={{ fontSize: 11, marginTop: 5 }}>
-                    This is a broker-wide default, not a commodity-specific rate.
-                  </div>
-                </div>
-              ) : null}
-              {brokerDetailError ? <div className="field-error" role="alert">{brokerDetailError}</div> : null}
+               {brokerDetailError ? <div className="field-error" role="alert">{brokerDetailError}</div> : null}
               {commoditiesError ? <div className="field-error" role="alert">{commoditiesError}</div> : null}
               {brokerDetailLoading ? <div className="text-muted" style={{ fontSize: 12 }}>Loading broker details…</div> : null}
               {brokerDetail && !brokerDetailLoading ? (
@@ -443,13 +426,6 @@ export function BrokersPage() {
               />
             </Field>
           </div>
-          <CommissionFields
-            commissionType={brokerEditCommissionType}
-            setCommissionType={setBrokerEditCommissionType}
-            commissionRate={brokerEditCommissionRate}
-            setCommissionRate={setBrokerEditCommissionRate}
-            disabled={brokerEditSaving}
-          />
           {brokerEditError ? <div className="field-error" role="alert">{brokerEditError}</div> : null}
         </Modal>
       ) : null}
@@ -489,50 +465,3 @@ export function BrokersPage() {
   );
 }
 
-function CommissionFields({
-  commissionType,
-  setCommissionType,
-  commissionRate,
-  setCommissionRate,
-  disabled,
-}: {
-  commissionType: string;
-  setCommissionType: (value: string) => void;
-  commissionRate: string;
-  setCommissionRate: (value: string) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className="form-2col">
-      <Field label="Commission type">
-        <select
-          className="input"
-          value={commissionType}
-          onChange={(event) => setCommissionType(event.target.value)}
-          disabled={disabled}
-          style={{ height: 38 }}
-        >
-          <option value="">No commission</option>
-          <option value="percent">Percent of trade value</option>
-          <option value="per_bag">Per bag</option>
-          <option value="flat">Flat</option>
-        </select>
-      </Field>
-      <Field label={commissionType === 'percent' ? 'Rate (%)' : 'Rate (₹)'}>
-        <input
-          className="input"
-          type="number"
-          min="0"
-          max={commissionType === 'percent' ? 100 : undefined}
-          step="0.01"
-          value={commissionRate}
-          onChange={(event) => setCommissionRate(event.target.value)}
-          disabled={disabled || !commissionType}
-        />
-      </Field>
-      <div className="text-muted" style={{ gridColumn: '1 / -1', fontSize: 11.5 }}>
-        The API stores one broker-wide commission, not individual commodity rates.
-      </div>
-    </div>
-  );
-}
